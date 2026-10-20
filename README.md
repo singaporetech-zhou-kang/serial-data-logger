@@ -14,14 +14,19 @@ A single-page browser app that reads a sensor over USB serial and logs it to a C
 - **Console:** raw serial lines and quick commands.
 
 ## Device profiles
-Everything specific to one instrument is in one block at the top of the script in `index.html` (`PROFILES`). The rest of the page is a general serial logger. Pick a profile with `?device=<id>` in the address:
+The lab spectrophotometer is an **AS7341** 11-channel spectral sensor. Its firmware prints one line per channel (`405-425nm: 1234` … `670-690nm: …`, `Clear: …`, `NIR: …`).
 
-| Address | Profile |
-|---|---|
-| `…/serial-data-logger/` | `spectro` (default): the lab spectrophotometer. Logs the `505-525nm` channel automatically on connect (switchable in Settings), has a **Gain** parameter (0.5x–512x, default 16x) shown under the reading, and suggests labels like "Blank, Standard 5 mg/L". |
-| `…/serial-data-logger/?device=generic` | Any serial device: you pick the variable yourself, and there are no device parameters. |
+Everything specific to an instrument is in one block at the top of the script in `index.html` (`PROFILES`). The rest of the page is a general serial logger. Students choose a profile in **Settings › What are you measuring?** (the page remembers it). A link can also pick one with `?device=<id>`:
 
-To support another instrument, add a profile with its channel label, parameters, label examples and baud rate. Nothing else in the page needs to change.
+| Profile | `?device=` | Channel logged on connect | Notes |
+|---|---|---|---|
+| **AS7341 · OD600** (default) | `od600` | `580-600nm` | Cell growth. The AS7341 has no 600 nm channel; 580–600 nm (F6) is the closest. |
+| AS7341 · DNS assay | `dns` (old links: `spectro`) | `505-525nm` | Reducing sugars at 515 nm (Lab 1). |
+| Any serial device | `generic` | none (you pick) | No device parameters. |
+
+Both AS7341 profiles have a **Gain** parameter (0.5x–512x, default 16x), sent as `Set, Gain, <value>` and shown under the reading. To support another instrument, add a profile with its channel label, parameters, label examples and baud rate.
+
+The app also has a **Read me** tab for students: connecting, blank first, saving labelled points, A = log10(I0/I), recording, what each tab is for, and what to do when something goes wrong.
 
 ## Computers: Windows, macOS, Ubuntu
 - Use **Chrome** or **Edge**. Firefox and Safari don't support Web Serial.

@@ -226,6 +226,14 @@
     .chk input{width:20px;height:20px}
   }
   .reclist{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+  .proftag{font-weight:600;color:var(--accent);border-color:var(--sel-line);background:var(--sel-bg)}
+  .proftag:empty{display:none}
+  #tabHelp h2{font-size:16px;margin:2px 0 8px}
+  #tabHelp h3{font-size:14px;margin:14px 0 4px;color:var(--accent)}
+  #tabHelp p,#tabHelp li{font-size:13.5px;line-height:1.55}
+  #tabHelp ol,#tabHelp ul{padding-left:20px;margin:4px 0}
+  #tabHelp code{overflow-wrap:anywhere}
+  .formula{font-family:var(--mono);background:var(--panel2);border-radius:10px;padding:8px 12px;display:inline-block;margin:4px 0}
   .reclist .row{justify-content:space-between}
   @media (max-width:640px){
     body{padding:0}
@@ -243,6 +251,7 @@
 <div class="device">
 <header>
   <h1>Serial Data Logging App<span>Web Serial · records straight to disk</span></h1>
+  <button class="sm proftag" id="profTag" title="What you're measuring – change it in Settings"></button>
   <div class="varwrap">
     <button id="varBtn" class="varbtn">+ Variable of interest</button>
     <div class="varpop" id="varPop" hidden>
@@ -304,6 +313,7 @@
     <button id="tabAnalysisBtn">Analysis</button>
     <button id="tabSettingsBtn">Settings</button>
     <button id="tabConsoleBtn">Console</button>
+    <button id="tabHelpBtn">Read me</button>
   </div>
 
   <!-- ============ READING ============ -->
@@ -485,8 +495,10 @@
     <div id="setBody">
     <div class="card">
       <div class="row">
-        <label style="align-self:center">Device profile</label>
-        <b id="devName"></b>
+        <div class="field" style="min-width:min(100%,320px)">
+          <label for="devSel">What are you measuring?</label>
+          <select id="devSel"></select>
+        </div>
       </div>
       <div class="dimnote" style="margin-top:6px" id="devNote"></div>
     </div>
@@ -575,6 +587,76 @@
       </div>
     </div>
   </section>
+
+  <!-- ============ READ ME ============ -->
+  <section class="tab" id="tabHelp">
+    <div class="card">
+      <h2>Read me</h2>
+      <p>This page reads a sensor over USB and saves the numbers as a <code>.csv</code> file you can open in Excel.
+        Set up for the lab's <b>AS7341 spectrophotometer</b>. It measures how much light gets through the cuvette
+        in several colour bands (channels).</p>
+
+      <h3>1. Choose what you're measuring</h3>
+      <p><b>Settings › What are you measuring?</b> The choice is shown at the top of the page.</p>
+      <ul>
+        <li><b>OD600</b> (default): cell growth. Uses the <b>580–600 nm</b> channel, the closest the AS7341 has to 600 nm.</li>
+        <li><b>DNS assay</b>: reducing sugars at 515 nm. Uses the <b>505–525 nm</b> channel.</li>
+        <li><b>Any serial device</b>: any other sensor. You pick the value to log with <b>+ Variable of interest</b>.</li>
+      </ul>
+
+      <h3>2. Connect</h3>
+      <ol>
+        <li>Plug in the spectrophotometer and click the <b>USB button</b> (top right). Pick the port the first time.</li>
+        <li>The big number on <b>Reading</b> starts to change. It's the light reaching the sensor:
+          <b>more light = bigger number</b>.</li>
+        <li>If the number sits at its maximum and doesn't change, <b>lower the Gain</b> (Settings). If it's very small,
+          raise it. Use the <b>same gain</b> for the blank and all samples.</li>
+      </ol>
+
+      <h3>3. Measure: blank first, then samples</h3>
+      <ol>
+        <li>Put the <b>blank</b> in (medium or water with reagents, no cells or sugar). Wait until the number is steady.</li>
+        <li>Type a label (e.g. <i>Blank</i>) under <b>Saved data points</b> and press <b>Save</b>.
+          The first Save asks where to put the file; every Save after that is written straight away.</li>
+        <li>Do the same for each standard and sample, with a clear label (e.g. <i>Std 0.5 g/L</i>, <i>Culture 2 h</i>).</li>
+      </ol>
+      <p>Absorbance (or OD) is worked out from the blank reading <code>I0</code> and the sample reading <code>I</code>:</p>
+      <div class="formula">A = log10( I0 / I )</div>
+      <p>A sample that lets through half as much light as the blank has A = 0.30.</p>
+
+      <h3>4. Record a time series (optional)</h3>
+      <p>The <b>record button</b> (●, top right) writes every reading to a <code>.csv</code> every 2 s until you
+        press it again, which is useful to watch a culture or reaction over time. On Android the file downloads
+        when you stop.</p>
+
+      <h3>5. The other tabs</h3>
+      <ul>
+        <li><b>Trend</b>: a live plot of the readings since you connected. Use it to see when a reading has settled
+          before you press Save, or to watch a slow change.</li>
+        <li><b>Analysis</b>: load a <code>.csv</code> (or <b>Use current run</b>), choose the X and Y columns, and get
+          summary statistics, a linear fit or a moving average.</li>
+        <li><b>Settings</b>: what you're measuring, automatic channel, and the gain.</li>
+        <li><b>Console</b>: the raw lines from the device, and a box to send commands.</li>
+      </ul>
+
+      <h3>Computers, Ubuntu and Android</h3>
+      <ul>
+        <li>Use <b>Chrome</b> or <b>Edge</b>. Firefox and Safari can't talk to USB devices.</li>
+        <li><b>Ubuntu</b>: if the port won't open, the message under the USB button gives the one-off fix (a udev rule, or the dialout group).</li>
+        <li><b>Android</b>: Chrome with a USB-C OTG cable. Works with native-USB boards (ESP32-S3/C3/C6 and similar). Recordings download when you stop;
+          a copy stays under Settings.</li>
+      </ul>
+
+      <h3>Something wrong?</h3>
+      <ul>
+        <li><b>The port won't open</b>: close other tabs, the Arduino serial monitor or any other program using it, then try again.</li>
+        <li><b>No number appears</b>: open <b>Console</b> to check lines arrive, and check <b>Settings</b> shows the right measurement.</li>
+        <li><b>Saved points didn't go to a file</b>: use <b>Download</b> next to the saved points.</li>
+      </ul>
+      <p class="dimnote" style="margin-top:12px">Made by the Zhou Kang Lab, Singapore Institute of Technology. MIT License.
+        Source code: <a style="color:var(--accent)" href="https://github.com/singaporetech-zhou-kang/serial-data-logger" target="_blank" rel="noopener">github.com/singaporetech-zhou-kang/serial-data-logger</a></p>
+    </div>
+  </section>
 </main>
 <footer class="credits">
   Developed by the <a href="https://singaporetech-zhou-kang.github.io/zhou-group-public-site/" target="_blank" rel="noopener">Zhou Kang Lab</a>, Singapore Institute of Technology.<br>
@@ -588,8 +670,11 @@ const $ = id => document.getElementById(id);
 
 /* ======================== DEVICE PROFILES ========================
    Everything specific to one instrument lives here; the rest of the page is a general
-   Web Serial logger. Choose a profile with ?device=<id> in the address, e.g.
-     …/serial-data-logger/                  the spectrophotometer (default)
+   Web Serial logger. The lab spectrophotometer is an AS7341 11-channel spectral sensor; its
+   firmware prints one line per channel: "405-425nm: 1234" … "670-690nm: …", "Clear: …", "NIR: …".
+   Choose a profile in Settings, or with ?device=<id> in the address:
+     …/serial-data-logger/                  od600 (default): AS7341, 580-600 nm channel (closest to 600 nm)
+     …/serial-data-logger/?device=dns       AS7341, 505-525 nm channel (DNS sugar assay, 515 nm)
      …/serial-data-logger/?device=generic   any serial device: no fixed channel, no parameters
    To support another instrument, add a profile here; nothing else needs to change.
 
@@ -601,21 +686,30 @@ const $ = id => document.getElementById(id);
                  onReading: also show the latest reported value under the big reading.
    labelHint     placeholder for the label of a saved data point
    baud          default baud rate                                                      */
+const AS7341_GAIN = { name: "Gain",                  // AS7341 analogue gain, set with  Set, Gain, <value>
+  values: ["0.5x","1x","2x","4x","8x","16x","32x","64x","128x","256x","512x"], def: "16x", onReading: true };
 const PROFILES = {
-  spectro: {
-    name: "Spectrophotometer (505\u2013525 nm channel)",
+  od600: {
+    name: "AS7341 \u00b7 OD600 (580\u2013600 nm channel)",
+    short: "OD600",
+    autoVariable: "580-600nm",
+    autoText: "the 580\u2013600 nm channel (closest to 600 nm)",
+    params: [ { ...AS7341_GAIN } ],
+    labelHint: "e.g. Blank (medium), Culture 0 h, Culture 2 h",
+    baud: 115200
+  },
+  dns: {
+    name: "AS7341 \u00b7 DNS assay (505\u2013525 nm channel)",
+    short: "DNS 515 nm",
     autoVariable: "505-525nm",
     autoText: "the 505\u2013525 nm channel",
-    params: [
-      { name: "Gain",
-        values: ["0.5x","1x","2x","4x","8x","16x","32x","64x","128x","256x","512x"],
-        def: "16x", onReading: true }
-    ],
-    labelHint: "e.g. Blank, Standard 5 mg/L, Sample A",
+    params: [ { ...AS7341_GAIN } ],
+    labelHint: "e.g. Blank, Standard 0.5 g/L, Sample A",
     baud: 115200
   },
   generic: {
     name: "Any serial device",
+    short: "Any device",
     autoVariable: "",
     autoText: "",
     params: [],
@@ -624,8 +718,10 @@ const PROFILES = {
   }
 };
 const DEVICE_ID = (() => {
-  const q = (new URLSearchParams(location.search).get("device") || "").toLowerCase();
-  return PROFILES[q] ? q : "spectro";
+  let q = (new URLSearchParams(location.search).get("device") || "").toLowerCase();
+  if (q === "spectro") q = "dns";                          // the old name of the 505-525 nm profile
+  if (!q){ try{ q = localStorage.getItem("kz_serial_device") || ""; }catch(e){} }   // last choice in Settings
+  return PROFILES[q] ? q : "od600";
 })();
 const DEVICE = PROFILES[DEVICE_ID];
 /* ==================================================================== */
@@ -782,7 +878,7 @@ if (!serialOk){
 }
 
 /* ---------------- tabs ---------------- */
-const TABS = ["Reading","Trend","Analysis","Settings","Console"];
+const TABS = ["Reading","Trend","Analysis","Settings","Console","Help"];
 function showTab(name){
   TABS.forEach(t => {
     $("tab"+t).classList.toggle("sel", t === name);
@@ -964,14 +1060,15 @@ function updateVarUI(){
     : "+ Variable of interest" + (seen.size ? "  (" + seen.size + " seen)" : "");
   b.classList.toggle("set", !!VAR.name);
   b.title = VAR.name ? "Logging lines that read “" + VAR.name + ", <number>”" : "Choose which line to log";
-  $("chanName").textContent = VAR.name || "no variable selected";
+  $("chanName").textContent = VAR.name || (autoChan() ? AUTO_CHANNEL + " (on connect)" : "no variable selected");
   $("histValHead").textContent = VAR.name || "Value";
   $("curValHead").textContent = VAR.name || "Value";
   $("trendTitle").textContent = (VAR.name || "Value") + " vs time";
   if (!vals.length)
     $("bigTs").textContent = VAR.name
       ? (port ? "waiting for “" + VAR.name + "”…" : "not connected")
-      : "pick a variable of interest, top left";
+      : (autoChan() ? "connect (USB button, top right) \u2014 the " + AUTO_CHANNEL + " channel is logged automatically"
+                    : "pick a variable of interest, top left");
 }
 function extract(line){
   if (!VAR.re) return null;
@@ -2095,17 +2192,20 @@ $("btnTxt").onclick = () => download("serial-raw-"+fileStamp()+".txt",
 
 
 /* ---------------- device profile -> page ---------------- */
+$("profTag").onclick = () => showTab("Settings");
 function applyDevice(){
-  $("devName").textContent = DEVICE.name;
-  const other = Object.keys(PROFILES).filter(k => k !== DEVICE_ID);
+  const sel = $("devSel"); sel.innerHTML = "";
+  Object.entries(PROFILES).forEach(([k, p]) => sel.appendChild(new Option(p.name, k)));
+  sel.value = DEVICE_ID;
+  sel.onchange = () => {                                   // switching profile reloads the page with ?device=
+    if (port && !confirm("Switching disconnects the device and clears this page's readings. Continue?")){ sel.value = DEVICE_ID; return; }
+    try{ localStorage.setItem("kz_serial_device", sel.value); }catch(e){}
+    const u = new URL(location.href); u.searchParams.set("device", sel.value); location.href = u.href;
+  };
   $("devNote").innerHTML = "";
-  $("devNote").append("Chosen with ", Object.assign(document.createElement("code"), {textContent: "?device=" + DEVICE_ID}),
-    " in the address" + (other.length ? "; also available: " : "."));
-  other.forEach((k, n) => {
-    const a = document.createElement("a");
-    a.href = "?device=" + k; a.textContent = k; a.style.color = "var(--accent)";
-    $("devNote").append(a, n < other.length - 1 ? ", " : ".");
-  });
+  $("devNote").append("The page remembers this choice. A link can also pick it: ",
+    Object.assign(document.createElement("code"), {textContent: "?device=" + DEVICE_ID}), ".");
+  $("profTag").textContent = DEVICE.short || "";
   $("autoCard").hidden = !AUTO_CHANNEL;
   $("autoText").textContent = DEVICE.autoText || AUTO_CHANNEL;
   $("paramCard").hidden = !PARAMS.length;
