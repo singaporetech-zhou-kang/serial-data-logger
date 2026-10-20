@@ -2429,7 +2429,7 @@ function computeCal(){
       if (sxx > 0){
         const mu = sxy / sxx, b = my - mu * mx;
         res.mu = mu; res.lnod0 = b; res.r2 = syy ? sxy * sxy / (sxx * syy) : NaN; res.ok = true;
-        res.stats = [["growth rate μ", fmt(mu) + " per h"],
+        res.stats = [["growth rate", "μ = " + fmt(mu) + " per h"],
                      ["doubling time", mu > 0 ? fmt(Math.LN2 / mu) + " h (" + fmt(60 * Math.LN2 / mu) + " min)" : "— (not growing)"],
                      ["R² of ln(OD) fit", isFinite(res.r2) ? res.r2.toFixed(4) : "—"],
                      ["points in fit", String(f.length)],
