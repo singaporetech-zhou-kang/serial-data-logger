@@ -1,0 +1,2160 @@
+<!DOCTYPE html>
+<!--
+  Serial Data Logging App
+  Copyright (c) 2026 Singapore Institute of Technology
+  Released under the MIT License: see LICENSE or https://opensource.org/license/mit
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Serial Data Logging App</title>
+<style>
+  :root{                                   /* light — the default */
+    color-scheme:light;
+    --bg:#f4f6f9; --panel:#ffffff; --panel2:#eef1f5; --line:#d3dae2;
+    --txt:#16202b; --dim:#5b6673; --accent:#0b62c4; --accent2:#5a9ae8; --ok:#1a7f37;
+    --warn:#9a6700; --err:#c1262f; --tx:#b0480a;
+    --inset:#fbfcfe; --line2:#e8edf3; --ts:#93a0ad;
+    --on-accent:#ffffff; --on-err:#ffffff;
+    --rec-line:#e8b4b7; --sel-bg:#e3eefb; --sel-line:#a6c9ef;
+    --banner-bg:#fff6dd; --banner-fg:#7a5600;
+    --shadow:0 10px 26px rgba(16,32,52,.16);
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  :root[data-theme="dark"]{
+    color-scheme:dark;
+    --bg:#0e1116; --panel:#161b22; --panel2:#1c232c; --line:#2a323d;
+    --txt:#e6edf3; --dim:#8b949e; --accent:#4da3ff; --accent2:#8ec6ff; --ok:#3fb950;
+    --warn:#d29922; --err:#f85149; --tx:#ffa657;
+    --inset:#0a0d12; --line2:#151b23; --ts:#54606e;
+    --on-accent:#06121f; --on-err:#2b0d0d;
+    --rec-line:#5b2c2c; --sel-bg:#12243a; --sel-line:#2c4f78;
+    --banner-bg:#3a2a0c; --banner-fg:#f0c674;
+    --shadow:0 12px 32px rgba(0,0,0,.55);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+    padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
+  h1{font-size:15px;margin:0;font-weight:600;letter-spacing:.2px}
+  .connwrap{position:relative;margin-left:8px}
+  .toolbar{display:flex;gap:8px;align-items:center;margin-left:auto}
+  .icon{width:34px;height:34px;display:grid;place-items:center;border-radius:9px;
+    border:1px solid var(--line);background:var(--panel2);cursor:pointer;color:var(--txt);padding:0}
+  .icon:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+  .icon:disabled{opacity:.35;cursor:not-allowed}
+  .icon svg{width:18px;height:18px;display:block}
+  .icon.recording{background:var(--err);border-color:var(--err);color:var(--on-err);
+    animation:recpulse 1.4s ease-in-out infinite}
+  .icon.recording:hover{color:var(--on-err)}
+  .icon svg.ic-moon{display:none}
+  :root[data-theme="dark"] .icon svg.ic-sun{display:none}
+  :root[data-theme="dark"] .icon svg.ic-moon{display:block}
+  @keyframes recpulse{0%,100%{opacity:1}50%{opacity:.45}}
+  .recpill{display:inline-flex;align-items:center;font-size:11.5px;font-family:var(--mono);
+    padding:3px 10px;border-radius:999px;border:1px solid var(--rec-line);color:var(--err)}
+  .recpill::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;
+    background:var(--err);margin-right:7px;animation:recpulse 1.4s ease-in-out infinite}
+  h1 span{display:block;font-size:11px;font-weight:400;color:var(--dim);margin-top:1px;letter-spacing:0}
+  .pill{display:flex;align-items:center;gap:7px;font-size:12px;
+    padding:5px 11px;border:1px solid var(--line);border-radius:999px;background:var(--panel2)}
+  .pill:hover{border-color:var(--accent)}
+  #connBtn{width:40px;height:40px;border-radius:11px}
+  #connBtn svg{width:25px;height:25px}
+  #connBtn.on{color:var(--ok);border-color:var(--ok)}
+  #connBtn.busy{color:var(--warn);border-color:var(--warn)}
+  .connpop{position:absolute;top:calc(100% + 8px);right:0;z-index:30;width:300px;
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:12px;box-shadow:var(--shadow);text-align:left}
+  .portlist{display:flex;flex-direction:column;gap:6px;margin-top:6px;max-height:190px;overflow-y:auto}
+  .portlist button{font-family:var(--mono);font-size:12px;text-align:left;padding:7px 9px;width:100%}
+  .connerr{color:var(--err);font-size:12px;margin-top:8px;display:block}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--err)}
+  .dot.on{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+  .dot.busy{background:var(--warn)}
+  main{padding:14px 16px 24px;max-width:1100px;margin:0 auto}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:12px;margin-bottom:12px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .row + .row{margin-top:10px}
+  label{font-size:12px;color:var(--dim)}
+  .field{display:flex;flex-direction:column;gap:4px}
+  select,input,button{font:inherit;color:var(--txt);background:var(--panel2);
+    border:1px solid var(--line);border-radius:7px;padding:7px 10px;outline:none}
+  select:focus,input:focus{border-color:var(--accent)}
+  input[type=text]{font-family:var(--mono)}
+  button{cursor:pointer}
+  button:hover:not(:disabled){border-color:var(--accent)}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  button.sm{padding:5px 10px;font-size:12px}
+  button.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
+  button.danger{border-color:var(--err);color:var(--err)}
+  #cmd{flex:1;min-width:220px}
+  details summary{cursor:pointer;color:var(--dim);font-size:12px;padding:2px 0}
+  code{font-family:var(--mono);background:var(--panel2);padding:1px 5px;border-radius:4px;font-size:12px}
+
+  .tabs{display:flex;gap:6px;margin-bottom:12px}
+  .tabs button{border-radius:8px 8px 0 0;border-bottom-color:transparent;color:var(--dim)}
+  .tabs button.sel{background:var(--panel);color:var(--txt);border-color:var(--line);
+    border-bottom-color:var(--panel);font-weight:600}
+  .tab{display:none}
+  .tab.sel{display:block}
+
+  .reading{text-align:center;padding:34px 12px 26px}
+  .chan{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+  .big{font-family:var(--mono);font-weight:700;line-height:1;margin:12px 0 6px;
+    font-size:clamp(54px,13vw,124px);color:var(--accent);
+    font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+  .big.stale{color:var(--dim)}
+  .tstamp{font-size:12.5px;color:var(--dim);font-family:var(--mono)}
+  .meta{margin-top:14px;display:flex;gap:18px;justify-content:center;flex-wrap:wrap;
+    font-size:12px;color:var(--dim)}
+
+  #hist,#cur{max-height:34vh;overflow-y:auto;border:1px solid var(--line);border-radius:8px;
+    background:var(--inset);font-family:var(--mono);font-size:12.5px}
+  #hist table,#cur table{width:100%;border-collapse:collapse}
+  #hist th,#cur th{position:sticky;top:0;background:var(--panel2);color:var(--dim);
+    font-weight:500;text-align:center;padding:6px 10px;font-size:11.5px;border-bottom:1px solid var(--line)}
+  #hist td,#cur td{padding:4px 10px;border-bottom:1px solid var(--line2);text-align:center}
+  #hist td.v,#cur td.v{font-variant-numeric:tabular-nums}
+
+  .capval{font-family:var(--mono);font-size:22px;font-weight:700;color:var(--accent);
+    padding:3px 12px;min-width:120px;text-align:center;font-variant-numeric:tabular-nums}
+  .capval.none{color:var(--dim);font-size:14px;font-weight:400}
+  .lbl{color:var(--tx)}
+  button.del{padding:1px 7px;font-size:12px;color:var(--dim);border-color:transparent;background:none}
+  button.del:hover{color:var(--err);border-color:var(--err)}
+  #chart,#anaChart{width:100%;display:block}
+  [hidden]{display:none!important}
+
+  .ptime{font-family:var(--mono);font-size:11.5px;color:var(--dim)}
+
+  /* variable-of-interest control */
+  .varwrap{position:relative}
+  .varbtn{font-family:var(--mono);font-size:12.5px;padding:5px 11px;color:var(--dim)}
+  .varbtn.set{color:var(--accent);border-color:var(--sel-line);background:var(--sel-bg);font-weight:600}
+  .varpop{position:absolute;top:calc(100% + 8px);left:0;z-index:30;width:340px;
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:12px;box-shadow:var(--shadow)}
+  .seen{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;max-height:150px;overflow-y:auto}
+  .seen button{font-family:var(--mono);font-size:11.5px;padding:4px 8px;color:var(--txt)}
+  .seen button b{color:var(--accent);font-weight:600}
+  .dimnote{color:var(--dim);font-size:12px}
+
+  /* analysis */
+  .statgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+  .stat .k{font-size:10.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em}
+  .stat .v{font-family:var(--mono);font-size:16px;margin-top:3px;font-variant-numeric:tabular-nums}
+  .stat .u{color:var(--dim);font-size:11px}
+  #tabAnalysis.drop .card:first-child{outline:2px dashed var(--accent);outline-offset:-5px}
+
+  #anaGrid{max-height:40vh;overflow:auto;border:1px solid var(--line);border-radius:8px;background:var(--inset)}
+  #anaGrid table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12.5px}
+  #anaGrid th{position:sticky;top:0;background:var(--panel2);color:var(--dim);font-weight:500;
+    padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+  #anaGrid td{padding:3px 8px;border-bottom:1px solid var(--line2);white-space:nowrap}
+  #anaGrid td[contenteditable],#anaGrid th[contenteditable]{outline:none;cursor:text}
+  #anaGrid td[contenteditable]:focus,#anaGrid th[contenteditable]:focus{
+    background:var(--sel-bg);box-shadow:inset 0 0 0 1px var(--accent)}
+  #anaGrid td.rn{color:var(--dim);text-align:right;user-select:none}
+  #anaGrid .del{padding:0 6px}
+  /* settings table (ported from serial-monitor.html) */
+  table.params{width:100%;border-collapse:collapse}
+  table.params th{text-align:left;font-size:11.5px;font-weight:500;color:var(--dim);
+    padding:6px 10px;border-bottom:1px solid var(--line);text-transform:uppercase;letter-spacing:.06em}
+  table.params td{padding:9px 10px;border-bottom:1px solid var(--line2);vertical-align:middle}
+  table.params tr:last-child td{border-bottom:none}
+  .pname{font-weight:600}
+  .pval{font-family:var(--mono);font-size:15px}
+  .pval.none{color:var(--dim);font-size:13px}
+  .tag{font-size:11px;padding:2px 7px;border-radius:999px;border:1px solid var(--line);color:var(--dim)}
+  .tag.ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 45%,transparent)}
+  .tag.pend{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,transparent)}
+  .tag.diff{color:var(--tx);border-color:color-mix(in srgb,var(--tx) 45%,transparent)}
+  #console{height:46vh;min-height:200px;overflow-y:auto;background:var(--inset);
+    border:1px solid var(--line);border-radius:8px;padding:10px;
+    font-family:var(--mono);font-size:12.5px;white-space:pre-wrap;word-break:break-word}
+  .ln{display:flex;gap:8px}
+  .ts{color:var(--ts);flex:none;user-select:none}
+  .rx{color:var(--txt)} .tx{color:var(--tx)} .sys{color:var(--dim);font-style:italic} .er{color:var(--err)}
+  .stats{display:flex;gap:16px;flex-wrap:wrap;color:var(--dim);font-size:12px;margin-top:8px}
+  .chk{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--dim)}
+  .chk input{accent-color:var(--accent)}
+  .banner{background:var(--banner-bg);border:1px solid var(--warn);color:var(--banner-fg);
+    padding:10px 12px;border-radius:8px;margin-bottom:12px;font-size:13px}
+  .quick button{font-family:var(--mono);font-size:12px;padding:5px 9px}
+</style>
+<script>
+  try{ const t = localStorage.getItem("kz_serial_theme");
+    if (t === "dark") document.documentElement.setAttribute("data-theme", "dark"); }catch(e){}
+</script>
+</head>
+<body>
+<header>
+  <h1>Serial Data Logging App<span>Web Serial · records straight to disk</span></h1>
+  <div class="varwrap">
+    <button id="varBtn" class="varbtn">+ Variable of interest</button>
+    <div class="varpop" id="varPop" hidden>
+      <label for="varInput">Label as the device prints it</label>
+      <input type="text" id="varInput" placeholder="e.g. CO2 (ppm)" style="width:100%">
+      <div class="row" style="margin-top:8px">
+        <button id="varSet" class="primary">Use this</button>
+        <button id="varClear">Clear</button>
+        <span style="flex:1"></span>
+      </div>
+      <label style="display:block;margin-top:12px">Seen in the stream</label>
+      <div class="seen" id="varSeen"><span class="dimnote">nothing detected yet</span></div>
+    </div>
+  </div>
+  <span class="recpill" id="recPill" hidden></span>
+  <div class="toolbar">
+    <button class="icon" id="btnRec" title="Record readings to a .csv on disk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="6.5" fill="currentColor"></circle></svg></button>
+    <button class="icon" id="btnTheme" title="Switch to the dark theme"><svg class="ic-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"></circle><path d="M12 2.4v2.2M12 19.4v2.2M2.4 12h2.2M19.4 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M18.8 5.2l-1.6 1.6M6.8 17.2l-1.6 1.6"></path></svg><svg class="ic-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.2A8.2 8.2 0 0 1 9.8 4 8.4 8.4 0 1 0 20 14.2z"></path></svg></button>
+    <button class="icon" id="btnCsvTop" title="Download the readings as .csv" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11"></path><path d="M7.5 10.5L12 15l4.5-4.5"></path><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path></svg></button>
+  </div>
+  <div class="connwrap">
+    <button class="icon" id="connBtn" title="Disconnected — click to pick a port"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 18.9V6.6"></path><path d="M12 2.6l2.2 3.9H9.8L12 2.6z" fill="currentColor" stroke="none"></path><circle cx="12" cy="20.4" r="1.7" fill="currentColor" stroke="none"></circle><path d="M12 13.4L8.1 9.5"></path><circle cx="7.4" cy="8.8" r="1.6" fill="currentColor" stroke="none"></circle><path d="M12 16.2l4.3-4.3"></path><rect x="15.2" y="8.6" width="3" height="3" rx="0.4" fill="currentColor" stroke="none"></rect></svg></button>
+    <div class="connpop" id="connPop" hidden>
+      <div id="connOff">
+        <div class="row" style="justify-content:space-between">
+          <label for="baud">Baud</label>
+          <select id="baud">
+            <option>9600</option><option>19200</option><option>38400</option><option>57600</option>
+            <option selected>115200</option><option>230400</option><option>460800</option><option>921600</option>
+          </select>
+        </div>
+        <label style="display:block;margin-top:11px">Click a port to connect</label>
+        <div class="portlist" id="portList"></div>
+        <div class="row" style="margin-top:10px">
+          <button id="btnAdd">+ Add port…</button>
+          <span style="flex:1"></span>
+          <label class="chk" title="Off = only USB serial adapters are offered">
+            <input type="checkbox" id="optAllPorts"> All ports</label>
+        </div>
+        <span class="connerr" id="connErr"></span>
+      </div>
+      <div id="connOn" hidden>
+        <div class="dimnote" id="connInfo"></div>
+        <div class="row" style="margin-top:11px">
+          <button id="btnDisconnect" class="danger">Disconnect</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="banner" id="unsupported" style="display:none">
+    This browser does not expose <code>navigator.serial</code>. Use <b>Chrome</b> or <b>Edge</b> on a computer.
+    If you opened the file directly and it still fails, serve the folder locally
+    (<code>python3 -m http.server 8000</code>) and open <code>http://localhost:8000/</code>, or use the hosted copy at <code>https://singaporetech-zhou-kang.github.io/serial-data-logger/</code>.
+  </div>
+
+  <div class="tabs">
+    <button id="tabReadingBtn" class="sel">Reading</button>
+    <button id="tabTrendBtn">Trend</button>
+    <button id="tabAnalysisBtn">Analysis</button>
+    <button id="tabSettingsBtn">Settings</button>
+    <button id="tabConsoleBtn">Console</button>
+  </div>
+
+  <!-- ============ READING ============ -->
+  <section class="tab sel" id="tabReading">
+    <div class="card">
+      <div class="reading">
+        <div class="chan" id="chanName">no variable selected</div>
+        <div class="big stale" id="bigVal">—</div>
+        <div class="tstamp" id="bigTs">pick a variable of interest, top left</div>
+        <div class="meta">
+          <span>Readings: <b id="nVals">0</b></span>
+          <span>Last: <b id="ago">—</b></span>
+          <span>Gain: <b id="gainNow">—</b></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="margin-bottom:10px">
+        <label style="align-self:center">Saved data points</label>
+        <span class="ptime" id="curFileState">not saved to disk yet</span>
+        <span style="flex:1"></span>
+        <button id="btnCurLoad">Load…</button>
+        <button id="btnCurCsv">Download</button>
+        <button id="btnCurClear">Clear</button>
+        <input type="file" id="curFileIn" accept=".csv,.txt,text/csv" style="display:none">
+      </div>
+      <div class="row">
+        <div class="field" style="flex:1;min-width:220px">
+          <label for="curLabel">Label</label>
+          <input type="text" id="curLabel" placeholder="e.g. Blank, Standard 5 mg/L, Sample A" style="width:100%">
+        </div>
+        <div class="field">
+          <label>Value (latest reading)</label>
+          <div class="capval none" id="capVal">—</div>
+        </div>
+        <div class="field"><label>&nbsp;</label><button id="btnCapture" class="primary">Save</button></div>
+      </div>
+      <div id="cur" style="margin-top:12px">
+        <table>
+          <thead><tr><th style="width:8%">#</th><th style="width:34%">Label</th>
+            <th style="width:26%">Timestamp</th>
+            <th style="width:26%" id="curValHead">Value</th><th style="width:6%"></th></tr></thead>
+          <tbody id="curBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ TREND ============ -->
+  <section class="tab" id="tabTrend">
+    <div class="card">
+      <div class="row" style="margin-bottom:8px">
+        <label style="align-self:center" id="trendTitle">Value vs time</label>
+        <span style="flex:1"></span>
+        <select id="plotMode" style="padding:4px 9px;font-size:12px" title="How to draw the trend">
+          <option value="line" selected>Line</option>
+          <option value="scatter">Scatter</option>
+          <option value="both">Line + points</option>
+        </select>
+        <select id="ptSize" style="padding:4px 9px;font-size:12px" title="Point size (radius in px)" disabled>
+          <option value="auto" selected>Point size: auto</option>
+          <option value="1">1 px</option>
+          <option value="1.5">1.5 px</option>
+          <option value="2">2 px</option>
+          <option value="3">3 px</option>
+          <option value="4">4 px</option>
+          <option value="5">5 px</option>
+          <option value="7">7 px</option>
+        </select>
+        <select id="xAxis" style="padding:4px 9px;font-size:12px" title="X-axis units">
+          <option value="s" selected>X: seconds</option>
+          <option value="min">X: minutes</option>
+          <option value="h">X: hours</option>
+          <option value="clock">X: clock time</option>
+        </select>
+        <span class="ptime" id="trendInfo"></span>
+      </div>
+      <canvas id="chart"></canvas>
+    </div>
+
+    <div class="card">
+      <div class="row" style="margin-bottom:8px">
+        <label style="align-self:center">Recorded readings</label>
+        <span style="flex:1"></span>
+        <button id="btnValsLoad">Load…</button>
+        <button id="btnCsv">Download</button>
+        <button id="btnClearVals">Clear</button>
+        <input type="file" id="valsFileIn" accept=".csv,.txt,text/csv" style="display:none">
+      </div>
+      <div id="hist">
+        <table>
+          <thead><tr><th style="width:24%">Timestamp</th><th style="width:18%">Elapsed (s)</th>
+            <th style="width:24%" id="histValHead">Value</th>
+            <th style="width:34%">Label</th></tr></thead>
+          <tbody id="histBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ANALYSIS ============ -->
+  <section class="tab" id="tabAnalysis">
+    <div class="card">
+      <div class="row">
+        <button id="btnLoad" class="primary">Load CSV…</button>
+        <input type="file" id="fileIn" accept=".csv,.txt,text/csv" style="display:none">
+        <button id="anaUseRun">Use current run</button>
+        <button id="anaEdit">Edit…</button>
+        <button id="anaClear">Clear</button>
+        <span class="dimnote" id="fileInfo">no file loaded — or drop a .csv anywhere on this tab</span>
+        <span style="flex:1"></span>
+        <div class="field"><label for="colX">X column</label><select id="colX"></select></div>
+        <div class="field"><label for="colY">Y column</label><select id="colY"></select></div>
+      </div>
+      <div id="anaEditor" hidden style="margin-top:10px">
+        <div class="row" style="margin-bottom:8px">
+          <button id="anaAddRow" class="sm">+ Row</button>
+          <button id="anaRaw" class="sm">Raw text</button>
+          <span style="flex:1"></span>
+          <span class="dimnote">click a cell to edit — the chart follows as you go</span>
+        </div>
+        <div id="anaGrid"></div>
+        <textarea id="anaText" spellcheck="false" hidden
+          style="width:100%;height:34vh;background:var(--inset);color:var(--txt);border:1px solid var(--line);
+                 border-radius:8px;padding:10px;font-family:var(--mono);font-size:12.5px;resize:vertical"></textarea>
+        <div class="row" style="margin-top:8px">
+          <button id="anaApply" class="primary">Apply</button>
+          <button id="anaSaveFile">Update file…</button>
+          <button id="anaCancel">Cancel</button>
+          <span class="dimnote" id="anaEditMsg"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="margin-bottom:8px">
+        <label style="align-self:center" id="anaTitle">Loaded data</label>
+        <span style="flex:1"></span>
+        <select id="anaMode" style="padding:4px 9px;font-size:12px" title="How to draw the data">
+          <option value="line">Line</option>
+          <option value="scatter" selected>Scatter</option>
+          <option value="both">Line + points</option>
+        </select>
+        <select id="anaPt" style="padding:4px 9px;font-size:12px" title="Point size (radius in px)">
+          <option value="auto" selected>Point size: auto</option>
+          <option value="1">1 px</option><option value="1.5">1.5 px</option>
+          <option value="2">2 px</option><option value="3">3 px</option>
+          <option value="4">4 px</option><option value="5">5 px</option><option value="7">7 px</option>
+        </select>
+        <select id="anaX" style="padding:4px 9px;font-size:12px" title="X-axis units">
+          <option value="s" selected>X: seconds</option>
+          <option value="min">X: minutes</option>
+          <option value="h">X: hours</option>
+          <option value="clock">X: clock time</option>
+        </select>
+        <span class="ptime" id="anaInfo"></span>
+      </div>
+      <canvas id="anaChart"></canvas>
+    </div>
+
+    <div class="card">
+      <div class="row" style="margin-bottom:10px">
+        <label style="align-self:center">Analysis</label>
+        <select id="anaFn" style="min-width:210px"></select>
+        <div class="field" id="anaParamWrap" hidden>
+          <label for="anaParam" id="anaParamLbl">Parameter</label>
+          <input type="text" id="anaParam" style="width:110px">
+        </div>
+        <span style="flex:1"></span>
+        <span class="dimnote" id="anaNote"></span>
+      </div>
+      <div class="statgrid" id="anaOut"></div>
+    </div>
+  </section>
+
+  <!-- ============ SETTINGS ============ -->
+  <section class="tab" id="tabSettings">
+    <div id="setBody">
+    <div class="card">
+      <div class="row">
+        <label class="chk"><input type="checkbox" id="optAutoChan" checked>
+          Use the 505-525 nm channel automatically on connection</label>
+      </div>
+      <div class="dimnote" style="margin-top:8px">Off: the channel stays yours to pick from
+        “+ Variable of interest”, top left.</div>
+    </div>
+    <div class="card">
+      <div class="row" style="margin-bottom:6px">
+        <label style="align-self:center">Device parameters</label>
+        <span style="flex:1"></span>
+        <span class="ptime" id="lastReportTs"></span>
+      </div>
+      <table class="params">
+        <thead><tr>
+          <th style="width:22%">Parameter</th>
+          <th style="width:26%">Set to</th>
+          <th style="width:14%"></th>
+          <th style="width:20%">Latest reported</th>
+          <th>Status</th>
+        </tr></thead>
+        <tbody id="paramBody"></tbody>
+      </table>
+      <details style="margin-top:10px"><summary>How it works</summary>
+        <div class="dimnote" style="margin-top:6px">Apply sends <code>Set, &lt;name&gt;, &lt;value&gt;</code> on the serial link.
+        Any incoming line of the form <code>Gain: 16x</code>, <code>Gain = 16</code>, <code>Set, Gain, 16x</code>,
+        <code>Report, Gain, 16x</code> — or a CSV row under a header carrying that column — updates
+        “Latest reported”, and the status tag says whether the device confirmed the value you chose.</div>
+      </details>
+    </div>
+    </div>
+  </section>
+
+  <!-- ============ CONSOLE ============ -->
+  <section class="tab" id="tabConsole">
+    <div class="card">
+      <div class="row">
+        <input type="text" id="cmd" placeholder="Type a command and press Enter…  (↑ / ↓ for history)" disabled>
+        <div class="field">
+          <label for="eol">Line ending</label>
+          <select id="eol">
+            <option value="lf" selected>NL (\n)</option>
+            <option value="crlf">CR+NL (\r\n)</option>
+            <option value="cr">CR (\r)</option>
+            <option value="none">None</option>
+          </select>
+        </div>
+        <button id="btnSend" disabled>Send</button>
+      </div>
+      <div class="row quick">
+        <label style="align-self:center">Quick commands (separate with <code>|</code>)</label>
+        <input type="text" id="presets" value="" placeholder="e.g. READ | START | STOP" style="flex:1;min-width:200px">
+      </div>
+      <div class="row quick" id="quickBar"></div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="margin-bottom:8px">
+        <label class="chk"><input type="checkbox" id="optTs" checked> Timestamps</label>
+        <label class="chk"><input type="checkbox" id="optScroll" checked> Auto-scroll</label>
+        <label class="chk"><input type="checkbox" id="optEcho" checked> Echo sent</label>
+        <label class="chk"><input type="checkbox" id="optHex"> Show hex</label>
+        <span style="flex:1"></span>
+        <button id="btnCopy">Copy log</button>
+        <button id="btnClear">Clear</button>
+        <button id="btnTxt">Download raw .txt</button>
+      </div>
+      <div id="console" aria-live="polite"></div>
+      <div class="stats">
+        <span>Lines: <b id="nLines">0</b></span>
+        <span>RX: <b id="nRx">0</b> B</span>
+        <span>TX: <b id="nTx">0</b> B</span>
+        <span id="portInfo"></span>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+
+/* USB-serial vendor IDs — keeps Bluetooth / debug-console ports out of the picker */
+const USB_FILTERS = [
+  0x2341, 0x2A03, 0x239A, 0x303A, 0x1A86, 0x10C4, 0x0403, 0x067B, 0x2E8A,
+  0x16C0, 0x1B4F, 0x04D8, 0x0483, 0x1FC9, 0x03EB, 0x0D28, 0x1366, 0x0925,
+  0x1D50, 0x2C99, 0x1546, 0x0451, 0x1A61
+].map(v => ({ usbVendorId: v }));
+
+const ports = [];
+let port = null, reader = null, writer = null, keepReading = false;
+let rxBytes = 0, txBytes = 0, lineCount = 0;
+let partial = "", flushTimer = null;
+const rows = [];      // raw log
+const vals = [];      // readings {t, v, label, el}
+const curated = [];   // manually saved points {label, t, v}
+const seen = new Map();          // labels spotted in the stream -> last value
+const VAR = { name: "", re: null, re2: null };   // the variable being logged
+let t0 = null, lastT = null;
+const history = []; let hIdx = -1;
+
+if (!("serial" in navigator)){
+  $("unsupported").style.display = "block";
+  $("btnAdd").disabled = true; $("connBtn").disabled = true;
+}
+
+/* ---------------- tabs ---------------- */
+const TABS = ["Reading","Trend","Analysis","Settings","Console"];
+function showTab(name){
+  TABS.forEach(t => {
+    $("tab"+t).classList.toggle("sel", t === name);
+    $("tab"+t+"Btn").classList.toggle("sel", t === name);
+  });
+  if (name === "Console") $("cmd").focus();
+  if (name === "Trend") drawChart();
+  if (name === "Analysis") drawAnalysis();
+}
+TABS.forEach(t => $("tab"+t+"Btn").onclick = () => showTab(t));
+
+/* ---------------- helpers ---------------- */
+const pad = (n,w=2) => String(n).padStart(w,"0");
+const stamp = d => pad(d.getHours())+":"+pad(d.getMinutes())+":"+pad(d.getSeconds())+"."+pad(d.getMilliseconds(),3);
+const hexOf = s => Array.from(new TextEncoder().encode(s)).map(b => pad(b.toString(16).toUpperCase())).join(" ");
+
+/* ---------------- raw console ---------------- */
+function log(text, dir){
+  const t = new Date();
+  rows.push({t, dir, text});
+  const el = document.createElement("div");
+  el.className = "ln";
+  const cls = dir==="TX" ? "tx" : dir==="ERR" ? "er" : dir==="SYS" ? "sys" : "rx";
+  const pfx = dir==="TX" ? "▶ " : dir==="RX" ? "" : "• ";
+  el.innerHTML = '<span class="ts"></span><span class="'+cls+'"></span>';
+  el.children[0].textContent = $("optTs").checked ? stamp(t) : "";
+  el.children[0].style.display = $("optTs").checked ? "" : "none";
+  el.children[1].textContent = pfx + text + ($("optHex").checked && dir!=="SYS" ? "   [" + hexOf(text) + "]" : "");
+  const c = $("console");
+  c.appendChild(el);
+  if (c.childElementCount > 4000) c.removeChild(c.firstChild);
+  lineCount++; $("nLines").textContent = lineCount;
+  if ($("optScroll").checked) c.scrollTop = c.scrollHeight;
+}
+const sys = m => log(m, "SYS");
+const err = m => log(m, "ERR");
+
+
+/* ---------------- device parameters (ported from serial-monitor.html) ----------------
+   Command format is  Set, <name>, <value>  ;  more can be added from the Settings tab. */
+const PARAMS = [
+  { name: "Gain",
+    values: ["0.5x","1x","2x","4x","8x","16x","32x","64x","128x","256x","512x"],
+    def: "16x" }
+];
+let headerCols = [];
+const norm = x => String(x).toLowerCase().replace(/[\s_]+/g, "");
+const escP = x => String(x).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+function renderParams(){
+  const tb = $("paramBody");
+  tb.innerHTML = "";
+  if (!PARAMS.length){
+    const tr = document.createElement("tr"), td = document.createElement("td");
+    td.colSpan = 5; td.className = "pval none"; td.style.textAlign = "center";
+    td.textContent = "no parameters defined";
+    tr.appendChild(td); tb.appendChild(tr); return;
+  }
+  PARAMS.forEach((p, i) => {
+    const tr = document.createElement("tr");
+    const tdN = document.createElement("td");
+    tdN.className = "pname"; tdN.textContent = p.name;
+
+    const tdS = document.createElement("td");
+    const sel = document.createElement("select");
+    sel.id = "pset"+i; sel.style.minWidth = "120px";
+    p.values.forEach(v => sel.appendChild(new Option(v, v)));
+    sel.value = p.def && p.values.includes(p.def) ? p.def : p.values[0];
+    tdS.appendChild(sel);
+
+    const tdB = document.createElement("td");
+    const b = document.createElement("button");
+    b.textContent = "Apply"; b.className = "primary"; b.id = "papply"+i;
+    b.disabled = !port;
+    b.onclick = () => applyParam(i);
+    tdB.appendChild(b);
+
+    const tdV = document.createElement("td");
+    tdV.id = "pval"+i; tdV.className = "pval none";
+    tdV.textContent = p.reported || "no report yet";
+    if (p.reported) tdV.className = "pval";
+
+    const tdT = document.createElement("td");
+    tdT.innerHTML = '<span class="tag" id="ptag'+i+'">—</span> <span class="ptime" id="ptime'+i+'"></span>';
+
+    tr.append(tdN, tdS, tdB, tdV, tdT);
+    tb.appendChild(tr);
+  });
+}
+function paramByName(name){
+  const n = norm(name);
+  return PARAMS.findIndex(p => norm(p.name) === n);
+}
+/* reported = what the device printed (may be "8 (128x)" — register + multiplier)
+   wanted   = the value chosen in the dropdown ("128x")                        */
+function sameValue(reported, wanted){
+  const w = norm(wanted);
+  if (norm(reported) === w) return true;
+  const toks = String(reported).split(/[^0-9A-Za-z.]+/).filter(Boolean).map(norm);
+  if (toks.includes(w)) return true;
+  if (/[a-z]/.test(w)) return false;          // "128x" must match the 128x token, not the register 8
+  const q = parseFloat(w);
+  return toks.some(t => { const v = parseFloat(t); return isFinite(v) && isFinite(q) && Math.abs(v-q) < 1e-9; });
+}
+async function applyParam(i){
+  const p = PARAMS[i];
+  const v = $("pset"+i).value;
+  p.pending = v;
+  const tag = $("ptag"+i);
+  tag.className = "tag pend"; tag.textContent = "sent…";
+  await send("Set, " + p.name + ", " + v);
+  showTab("Settings");
+}
+function recordParam(name, rawVal){
+  const i = paramByName(name);
+  if (i < 0) return false;
+  const p = PARAMS[i];
+  const v = String(rawVal).trim().replace(/[;.]+$/, "");
+  if (v === "") return false;
+  p.reported = v; p.reportedAt = new Date();
+  const cell = $("pval"+i), time = $("ptime"+i), tag = $("ptag"+i);
+  if (!cell || !tag){ renderParams(); return true; }        // table not built yet
+  cell.textContent = v;
+  cell.className = "pval";
+  if (time) time.textContent = stamp(p.reportedAt);
+  if (p.pending && sameValue(p.pending, v)){ tag.className = "tag ok"; tag.textContent = "applied ✓"; p.pending = null; }
+  else if (p.pending){ tag.className = "tag pend"; tag.textContent = "waiting for " + p.pending; }
+  else if (!sameValue($("pset"+i).value, v)){ tag.className = "tag diff"; tag.textContent = "device value"; }
+  else { tag.className = "tag ok"; tag.textContent = "matches"; }
+  const g = $("gainNow"); if (g && norm(p.name) === "gain") g.textContent = v;
+  const lr = $("lastReportTs"); if (lr) lr.textContent = "last report " + stamp(p.reportedAt);
+  return true;
+}
+/* a text-only delimited line naming at least one parameter is taken as a header */
+function maybeParamHeader(line){
+  const f = line.split(/[,;\t]/).map(x => x.trim());
+  if (f.length < 2 || f.some(x => /[:=]/.test(x))) return false;
+  if (!f.every(x => x === "" || /^[^0-9]*$/.test(x))) return false;
+  if (!f.some(x => paramByName(x) >= 0)) return false;
+  headerCols = f;
+  return true;
+}
+function scanParams(line){
+  let hit = false;
+  // "Gain: 16x" | "Gain = 16" | "Set, Gain, 16x" | "Report, Gain, 16x, ..." | "Gain 16x"
+  PARAMS.forEach(p => {
+    const re = new RegExp("(?:^|[^A-Za-z0-9])" + escP(p.name) + "\\s*[,:=\\s]\\s*([^,;\\t]{1,24})", "i");
+    const m = line.match(re);
+    if (m && recordParam(p.name, m[1])) hit = true;
+  });
+  const f = line.split(/[,;\t]/).map(x => x.trim());      // CSV rows under a detected header
+  if (headerCols.length && f.length === headerCols.length)
+    headerCols.forEach((h, i) => { if (paramByName(h) >= 0 && recordParam(h, f[i])) hit = true; });
+  return hit;
+}
+
+/* ---------------- variable of interest ---------------- */
+const NUM  = "([-+]?\\d*\\.?\\d+(?:[eE][-+]?\\d+)?)";
+const ISNUM = /^[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?$/;
+const escRe = t => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+function setVariable(name){
+  name = (name || "").trim().replace(/[,;:=]+$/, "");
+  if (name === VAR.name){ closePop(); return; }
+  if (name && vals.length){
+    const n = vals.length;
+    clearReadings();
+    sys("Variable changed to “" + name + "” — cleared " + n + " earlier readings.");
+  }
+  VAR.name = name;
+  if (name){
+    const pat = escRe(name).replace(/\\?\s+/g, "\\s*");
+    VAR.re  = new RegExp("(?:^|[^A-Za-z0-9])" + pat + "\\s*[,:=\\t]\\s*" + NUM, "i");
+    VAR.re2 = new RegExp("(?:^|[^A-Za-z0-9])" + pat + "\\s+" + NUM, "i");
+  } else { VAR.re = VAR.re2 = null; }
+  updateVarUI();
+  closePop();
+}
+function updateVarUI(){
+  const b = $("varBtn");
+  b.textContent = VAR.name
+    ? "◆ " + VAR.name
+    : "+ Variable of interest" + (seen.size ? "  (" + seen.size + " seen)" : "");
+  b.classList.toggle("set", !!VAR.name);
+  b.title = VAR.name ? "Logging lines that read “" + VAR.name + ", <number>”" : "Choose which line to log";
+  $("chanName").textContent = VAR.name || "no variable selected";
+  $("histValHead").textContent = VAR.name || "Value";
+  $("curValHead").textContent = VAR.name || "Value";
+  $("trendTitle").textContent = (VAR.name || "Value") + " vs time";
+  if (!vals.length)
+    $("bigTs").textContent = VAR.name
+      ? (port ? "waiting for “" + VAR.name + "”…" : "not connected")
+      : "pick a variable of interest, top left";
+}
+function extract(line){
+  if (!VAR.re) return null;
+  let m = line.match(VAR.re) || line.match(VAR.re2);
+  return m ? parseFloat(m[1]) : null;
+}
+
+/* harvest "Name, 123" / "Name: 123" pairs so the picker can offer them */
+function note(name, val){
+  name = String(name).trim().replace(/^[-•*\s]+/, "");
+  if (!name || name.length > 40 || !/[A-Za-z]/.test(name) || ISNUM.test(name)) return;
+  const isNew = !seen.has(name);
+  seen.set(name, val);
+  if (seen.size > 24) seen.delete(seen.keys().next().value);
+  if (isNew && !VAR.name) updateVarUI();
+  if (!$("varPop").hidden) renderSeen();
+}
+function harvest(line){
+  const f = line.split(/[,;\t]/).map(x => x.trim());
+  for (let i = 0; i < f.length; i++){
+    const m = f[i].match(/^(.{1,40}?)\s*[:=]\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)$/);
+    if (m) note(m[1], m[2]);
+    else if (i + 1 < f.length && ISNUM.test(f[i+1]) && !ISNUM.test(f[i])) note(f[i], f[i+1]);
+  }
+  const one = line.match(/^\s*([A-Za-z][^,;:=\t]*?[A-Za-z)\]])\s+([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*$/);
+  if (one) note(one[1], one[2]);
+}
+function renderSeen(){
+  const box = $("varSeen");
+  box.innerHTML = "";
+  if (!seen.size){ box.innerHTML = '<span class="dimnote">nothing detected yet</span>'; return; }
+  Array.from(seen.entries()).reverse().forEach(([k, v]) => {
+    const b = document.createElement("button");
+    b.innerHTML = "";
+    b.appendChild(document.createTextNode(k + "  "));
+    const bold = document.createElement("b"); bold.textContent = v;
+    b.appendChild(bold);
+    b.onclick = () => setVariable(k);
+    box.appendChild(b);
+  });
+}
+function openPop(){
+  $("varPop").hidden = false;
+  $("varInput").value = VAR.name;
+  renderSeen();
+  $("varInput").focus(); $("varInput").select();
+}
+function closePop(){ $("varPop").hidden = true; }
+$("varBtn").onclick = e => { e.stopPropagation(); $("varPop").hidden ? openPop() : closePop(); };
+$("varPop").onclick = e => e.stopPropagation();
+document.addEventListener("click", () => { closePop(); closeConn(); });
+$("varSet").onclick = () => setVariable($("varInput").value);
+$("varClear").onclick = () => setVariable("");
+$("varInput").addEventListener("keydown", e => {
+  if (e.key === "Enter"){ e.preventDefault(); setVariable($("varInput").value); }
+  if (e.key === "Escape"){ e.preventDefault(); closePop(); }
+});
+
+/* ---------------- readings ---------------- */
+function fmt(v){
+  const a = Math.abs(v);
+  if (a >= 100000 || (a < 0.001 && a > 0)) return v.toExponential(3);
+  return String(Math.round(v * 1000) / 1000);
+}
+function pushValue(v, t){
+  if (t0 === null) t0 = t.getTime();
+  const entry = {t, v, label: ""};
+  vals.push(entry);
+  lastT = t;
+  $("capVal").textContent = fmt(v);
+  $("capVal").className = "capval";
+  $("bigVal").textContent = fmt(v);
+  $("bigVal").classList.remove("stale");
+  $("bigTs").textContent = t.toLocaleTimeString([], {hour12:false}) + "." + pad(t.getMilliseconds(),3)
+                          + "  ·  " + t.toLocaleDateString();
+  $("nVals").textContent = vals.length;
+  $("btnCsvTop").disabled = false;
+  const tb = $("histBody");
+  const tr = document.createElement("tr");
+  const c = [0,1,2,3].map(() => document.createElement("td"));
+  c[0].textContent = stamp(t);
+  c[1].textContent = ((t.getTime() - t0) / 1000).toFixed(3); c[1].className = "v";
+  c[2].textContent = fmt(v); c[2].className = "v";
+  c[3].className = "lbl";
+  tr.append(...c);
+  entry.el = c[3];
+  tb.insertBefore(tr, tb.firstChild);
+  while (tb.childElementCount > 500) tb.removeChild(tb.lastChild);
+  if ($("tabTrend").classList.contains("sel")) drawChart();
+}
+setInterval(() => {
+  if (!lastT){ $("ago").textContent = "—"; return; }
+  const s = (Date.now() - lastT.getTime()) / 1000;
+  $("ago").textContent = s < 1 ? "just now" : s.toFixed(0) + " s ago";
+  $("bigVal").classList.toggle("stale", s > 10);
+}, 500);
+
+function handleLine(line){
+  log(line, "RX");
+  if (!line.trim()) return;
+  if (maybeParamHeader(line)) return;
+  scanParams(line);
+  harvest(line);
+  const v = extract(line);
+  if (v !== null && isFinite(v)) pushValue(v, new Date());
+}
+
+/* ---------------- port picker (top-right pill) ---------------- */
+const isUsb = p => { const i = p.getInfo ? p.getInfo() : {}; return i.usbVendorId !== undefined; };
+const hx = n => "0x" + n.toString(16).toUpperCase().padStart(4,"0");
+function labelFor(p, i){
+  const info = p.getInfo ? p.getInfo() : {};
+  return info.usbVendorId !== undefined
+    ? "USB " + hx(info.usbVendorId) + ":" + hx(info.usbProductId)
+    : "Serial port " + (i + 1);
+}
+async function refreshPorts(){
+  if (!("serial" in navigator)) return;
+  let list = await navigator.serial.getPorts();
+  if (!$("optAllPorts").checked) list = list.filter(isUsb);
+  ports.length = 0; list.forEach(p => ports.push(p));
+  const box = $("portList");
+  box.innerHTML = "";
+  if (!ports.length){
+    box.innerHTML = '<span class="dimnote">No port authorised yet — click “+ Add port…”.</span>';
+    return;
+  }
+  ports.forEach((p, i) => {
+    const b = document.createElement("button");
+    b.textContent = labelFor(p, i);
+    b.onclick = () => connectTo(p);
+    box.appendChild(b);
+  });
+}
+$("optAllPorts").onchange = () => refreshPorts();
+$("btnAdd").onclick = async () => {
+  try {
+    const opts = $("optAllPorts").checked ? {} : { filters: USB_FILTERS };
+    const p = await navigator.serial.requestPort(opts);
+    if (!isUsb(p)) $("optAllPorts").checked = true;
+    await refreshPorts();
+    connectTo(p);
+  } catch(e){
+    if (e && e.name === "NotFoundError")
+      connMsg("No matching USB device. Tick “All ports” if your board is missing.");
+    else if (e) connMsg("Request failed: " + e.message);
+  }
+};
+
+/* ---------------- connect / disconnect ---------------- */
+function connMsg(m){ $("connErr").textContent = m || ""; if (m) sys(m); }
+function openConn(){ $("connPop").hidden = false; connMsg(""); if (!port) refreshPorts(); }
+function closeConn(){ $("connPop").hidden = true; }
+$("connBtn").onclick = async e => {
+  e.stopPropagation();
+  if (port){ closeConn(); closePort("Disconnected by user."); return; }   // connected: disconnect straight away
+  if (!$("connPop").hidden){ closeConn(); return; }
+  await refreshPorts();
+  const key = q => { const i = q.getInfo ? q.getInfo() : {};
+    return i.usbVendorId !== undefined ? i.usbVendorId + ":" + i.usbProductId : "?"; };
+  const uniq = [...new Set(ports.map(key))];
+  sys("Ports available: " + (ports.length
+        ? ports.map((q, i) => labelFor(q, i)).join(", ") : "none authorised yet") + ".");
+  if (ports.length === 1 || (ports.length > 1 && uniq.length === 1 && uniq[0] !== "?")){
+    closeConn();                                  // one device, even if it exposes several entries
+    sys("Connecting to " + labelFor(ports[0], 0) + "\u2026");
+    connectTo(ports[0]);
+    return;
+  }
+  openConn();
+};
+$("connPop").onclick = e => e.stopPropagation();
+
+function setState(s){
+  const b = $("connBtn");
+  b.className = "icon" + (s === "on" ? " on" : s === "busy" ? " busy" : "");
+  b.title = (s === "on" ? "Connected" : s === "busy" ? "Working\u2026" : "Disconnected")
+            + " — click to " + (s === "on" ? "disconnect" : "pick a port");
+  const on = (s === "on");
+  $("connOn").hidden = !on; $("connOff").hidden = on;
+  $("btnSend").disabled = !on; $("cmd").disabled = !on;
+  document.querySelectorAll("#quickBar button").forEach(b => b.disabled = !on);
+  PARAMS.forEach((p,i) => { const b = $("papply"+i); if (b) b.disabled = !on; });
+}
+async function connectTo(p){
+  if (port) return;
+  port = p;
+  connMsg("");
+  setState("busy");
+  try {
+    await port.open({ baudRate: Number($("baud").value), dataBits: 8, stopBits: 1,
+                      parity: "none", flowControl: "none", bufferSize: 4096 });
+  } catch(e){
+    port = null; setState("off");
+    connMsg("Could not open the port: " + e.message +
+      (/already open|in use|Failed to open/i.test(e.message) ? " — close any other serial monitor." : ""));
+    return;
+  }
+  const info = port.getInfo ? port.getInfo() : {};
+  const id = info.usbVendorId !== undefined
+    ? hx(info.usbVendorId) + ":" + hx(info.usbProductId) : "serial port";
+  $("connInfo").textContent = id + "  @  " + $("baud").value + " baud";
+  $("portInfo").textContent = "VID/PID: " + id;
+  setState("on");
+  closeConn();
+  sys("Connected — " + id + " @ " + $("baud").value + " baud.");
+  if (autoChan() && VAR.name !== AUTO_CHANNEL){
+    setVariable(AUTO_CHANNEL);
+    sys("Logging the " + AUTO_CHANNEL + " channel (Settings ▸ automatic channel).");
+  }
+  updateVarUI();
+  readLoop();
+}
+$("btnDisconnect").onclick = () => { closeConn(); closePort("Disconnected by user."); };
+
+async function closePort(msg){
+  keepReading = false;
+  try { if (reader) await reader.cancel(); } catch(e){}
+  try { if (writer){ writer.releaseLock(); writer = null; } } catch(e){}
+  try { if (port) await port.close(); } catch(e){}
+  port = null; reader = null;
+  flushPartial();
+  setState("off");
+  if (msg){ sys(msg); $("bigTs").textContent = msg; }
+}
+
+/* ---------------- receive ---------------- */
+function flushPartial(){
+  if (partial.length){ handleLine(partial); partial = ""; }
+  clearTimeout(flushTimer); flushTimer = null;
+}
+async function readLoop(){
+  keepReading = true;
+  const dec = new TextDecoder();
+  while (port && port.readable && keepReading){
+    reader = port.readable.getReader();
+    try {
+      while (true){
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (!value || !value.length) continue;
+        rxBytes += value.length; $("nRx").textContent = rxBytes;
+        partial += dec.decode(value, { stream: true });
+        let i;
+        while ((i = partial.search(/\r\n|\n|\r/)) >= 0){
+          const line = partial.slice(0, i);
+          partial = partial.slice(i + (partial.substr(i,2) === "\r\n" ? 2 : 1));
+          handleLine(line);
+        }
+        clearTimeout(flushTimer);
+        if (partial.length) flushTimer = setTimeout(flushPartial, 300);
+      }
+    } catch(e){
+      if (keepReading) err("Read error: " + e.message);
+    } finally { try { reader.releaseLock(); } catch(e){} }
+    if (!keepReading || !port || !port.readable) break;
+  }
+  if (keepReading) closePort("Device stopped sending / was removed.");
+}
+
+/* ---------------- send ---------------- */
+const EOL = { lf:"\n", crlf:"\r\n", cr:"\r", none:"" };
+async function send(text){
+  if (!port || !port.writable){ err("Not connected."); return; }
+  const data = new TextEncoder().encode(text + EOL[$("eol").value]);
+  try {
+    if (!writer) writer = port.writable.getWriter();
+    await writer.write(data);
+    txBytes += data.length; $("nTx").textContent = txBytes;
+    if ($("optEcho").checked) log(text, "TX");
+    if (text.trim() && history[history.length-1] !== text) history.push(text);
+    hIdx = history.length;
+  } catch(e){ err("Write failed: " + e.message); }
+}
+$("btnSend").onclick = () => { const v = $("cmd").value; if (v !== ""){ send(v); $("cmd").value = ""; } };
+$("cmd").addEventListener("keydown", e => {
+  if (e.key === "Enter"){ e.preventDefault(); $("btnSend").click(); }
+  else if (e.key === "ArrowUp"){ e.preventDefault(); if (hIdx > 0){ hIdx--; $("cmd").value = history[hIdx]; } }
+  else if (e.key === "ArrowDown"){ e.preventDefault();
+    if (hIdx < history.length-1){ hIdx++; $("cmd").value = history[hIdx]; }
+    else { hIdx = history.length; $("cmd").value = ""; } }
+});
+function buildQuick(){
+  const bar = $("quickBar"); bar.innerHTML = "";
+  $("presets").value.split(/\s*\|\s*/).map(s => s.trim()).filter(Boolean).forEach(c => {
+    const b = document.createElement("button");
+    b.textContent = c; b.disabled = !port; b.onclick = () => send(c);
+    bar.appendChild(b);
+  });
+}
+$("presets").oninput = buildQuick;
+
+/* ---------------- manually saved data points ---------------- */
+function renderCurated(){
+  const tb = $("curBody");
+  tb.innerHTML = "";
+  curated.forEach((r, i) => {
+    const tr = document.createElement("tr");
+    const c = [0,1,2,3,4].map(() => document.createElement("td"));
+    c[0].textContent = String(i + 1);
+    c[1].textContent = r.label; c[1].className = "lbl";
+    c[1].contentEditable = "true"; c[1].title = "Click to edit the label";
+    c[1].onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); c[1].blur(); } };
+    c[1].onblur = () => {
+      const t = c[1].textContent.trim();
+      if (t === r.label) return;
+      r.label = t;
+      if (r.entry){ r.entry.label = t; if (r.entry.el) r.entry.el.textContent = t; }
+      pointsEdited();
+    };
+    c[2].textContent = stamp(r.t);
+    c[3].textContent = fmt(r.v); c[3].className = "v";
+    c[3].contentEditable = "true"; c[3].title = "Click to edit the value";
+    c[3].onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); c[3].blur(); } };
+    c[3].onblur = () => {
+      const v = parseFloat(c[3].textContent.replace(/[^0-9eE+\-.]/g, ""));
+      if (!isFinite(v)){ c[3].textContent = fmt(r.v); return; }
+      if (v === r.v) return;
+      r.v = v; c[3].textContent = fmt(v);
+      pointsEdited();
+    };
+    const b = document.createElement("button");
+    b.className = "del"; b.textContent = "✕"; b.title = "Remove this point";
+    b.onclick = () => { if (r.entry) r.entry.label = ""; if (r.entry && r.entry.el) r.entry.el.textContent = "";
+                        if (curHandle) sys("Removed \u201c" + r.label + "\u201d from the table \u2014 the row already written to "
+                          + curName + " stays in the file.");
+                        curated.splice(i, 1);
+                        pointsEdited();
+renderCurated(); if ($("tabTrend").classList.contains("sel")) drawChart(); };
+    c[4].appendChild(b);
+    tr.append(...c);
+    tb.insertBefore(tr, tb.firstChild);
+  });
+}
+function capture(){
+  if (!vals.length){
+    $("capVal").textContent = VAR.name ? "no reading yet" : "no variable set";
+    $("capVal").className = "capval none"; return;
+  }
+  const entry = vals[vals.length - 1];
+  const label = $("curLabel").value.trim() || ("Point " + (curated.length + 1));
+  entry.label = entry.label ? entry.label + "; " + label : label;
+  if (entry.el) entry.el.textContent = entry.label;
+  curated.push({ label, t: entry.t, v: entry.v, entry });
+  renderCurated();
+  writeCuratedRow(curated[curated.length - 1], curated.length);
+  $("curLabel").value = "";
+  $("curLabel").focus();
+  if ($("tabTrend").classList.contains("sel")) drawChart();
+}
+$("btnCapture").onclick = capture;
+$("curLabel").addEventListener("keydown", e => { if (e.key === "Enter"){ e.preventDefault(); capture(); } });
+
+/* ---------------- chart engine (shared by Trend and Analysis) ----------------
+   o = { cv, infoEl, modeEl, sizeEl, axisEl,
+         xs:[number], ys:[number],          // xs are seconds from base, or raw x values
+         base: epoch-ms | null,             // set when xs are seconds of real time
+         xLabel: string | null,             // set for a non-time x axis (disables the unit menu)
+         marks: [{x,y,label}], lines: [{xs,ys,color,width,dash}],
+         count: string, empty: string, emptyOne: string }                        */
+const CSSV = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim() || "#888";
+function paintChart(o){
+  const cv = o.cv, ctx = cv.getContext("2d");
+  const w = Math.max(cv.clientWidth || 640, 240), h = o.height || 288;
+  const dpr = window.devicePixelRatio || 1;
+  cv.style.height = h + "px";
+  if (cv.width !== Math.round(w*dpr) || cv.height !== Math.round(h*dpr)){
+    cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr);
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  const font = "11px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace";
+  const n = o.xs.length;
+  if (n < 2){
+    ctx.fillStyle = CSSV("--dim"); ctx.font = font;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(n ? (o.emptyOne || "only one point") : (o.empty || "no data"), w/2, h/2);
+    if (o.infoEl) o.infoEl.textContent = "";
+    return;
+  }
+  // decimate very long series
+  const step = Math.ceil(n / 1500);
+  const xs = [], ys = [];
+  for (let i = 0; i < n; i++) if (i % step === 0 || i === n - 1){ xs.push(o.xs[i]); ys.push(o.ys[i]); }
+
+  // x-axis units and the two axis titles (needed before margins are chosen)
+  const timeAxis = !o.xLabel;
+  const xu   = timeAxis && o.axisEl ? o.axisEl.value : "raw";
+  const div  = xu === "min" ? 60 : xu === "h" ? 3600 : 1;
+  const unit = xu === "min" ? " min" : xu === "h" ? " h" : xu === "s" ? " s" : "";
+  const yTitle = o.yTitle || "";
+  const xTitle = o.xTitle || (timeAxis
+    ? (xu === "clock" ? "Clock time"
+      : "Time (" + (xu === "min" ? "min" : xu === "h" ? "h" : "s") + ")")
+    : o.xLabel);
+
+  const x0 = xs[0], xe = xs[xs.length-1];
+  const x1 = (xe === x0) ? x0 + 1 : xe;
+  let y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
+  (o.lines || []).forEach(L => L.ys.forEach(v => {
+    if (isFinite(v)){ if (v < y0) y0 = v; if (v > y1) y1 = v; }
+  }));
+  if (y1 - y0 < 1e-9){ y0 -= 1; y1 += 1; }
+  const m = (y1 - y0) * 0.08; y0 -= m; y1 += m;
+
+  // left margin = widest y tick label (+ room for the rotated y title)
+  ctx.font = font;
+  const yTicks = [0,1,2,3,4].map(i => fmt(y0 + (y1 - y0) * i / 4));
+  let tickW = 0;
+  yTicks.forEach(t => { tickW = Math.max(tickW, ctx.measureText(t).width); });
+  const P = { l: Math.ceil(tickW) + 14 + (yTitle ? 20 : 0), r: 14, t: 14, b: xTitle ? 48 : 28 };
+
+  const X = v => P.l + (x1 === x0 ? 0 : (v - x0) / (x1 - x0)) * (w - P.l - P.r);
+  const Y = v => h - P.b - (v - y0) / (y1 - y0) * (h - P.t - P.b);
+
+  // grid + y labels
+  ctx.strokeStyle = CSSV("--line"); ctx.lineWidth = 1;
+  ctx.fillStyle = CSSV("--dim");
+  ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  for (let i = 0; i <= 4; i++){
+    const yv = y0 + (y1 - y0) * i / 4, y = Y(yv);
+    ctx.beginPath(); ctx.moveTo(P.l, y); ctx.lineTo(w - P.r, y); ctx.stroke();
+    ctx.fillText(yTicks[i], P.l - 8, y);
+  }
+
+  // x labels
+  const span = x1 - x0;
+  const spanU = span / div;
+  const dec = spanU >= 100 ? 0 : spanU >= 10 ? 1 : 2;
+  const clock = xv => {
+    const d = new Date((o.base || 0) + xv * 1000);
+    return span < 600
+      ? pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds())
+      : pad(d.getHours()) + ":" + pad(d.getMinutes());
+  };
+  const tick = xv => (xu === "clock" && o.base) ? clock(xv) : (xv / div).toFixed(dec) + unit;
+  ctx.textBaseline = "top";
+  for (let i = 0; i <= 4; i++){
+    const xv = x0 + span * i / 4;
+    ctx.textAlign = i === 0 ? "left" : i === 4 ? "right" : "center";   // keep end labels inside
+    ctx.fillText(tick(xv), X(xv), h - P.b + 7);
+  }
+  // axis titles
+  ctx.fillStyle = CSSV("--dim");
+  ctx.font = "12px system-ui,-apple-system,'Segoe UI',Roboto,sans-serif";
+  if (xTitle){
+    ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+    ctx.fillText(xTitle, P.l + (w - P.l - P.r)/2, h - 6);
+  }
+  if (yTitle){
+    ctx.save();
+    ctx.translate(14, P.t + (h - P.t - P.b)/2);
+    ctx.rotate(-Math.PI/2);
+    ctx.textAlign = "center"; ctx.textBaseline = "top";
+    ctx.fillText(yTitle, 0, 0);
+    ctx.restore();
+  }
+  ctx.font = font;
+
+  // the series
+  const mode = o.modeEl ? o.modeEl.value : "line";
+  if (mode !== "scatter"){
+    ctx.strokeStyle = CSSV("--accent"); ctx.lineWidth = 1.6; ctx.beginPath();
+    xs.forEach((_, i) => { const x = X(xs[i]), y = Y(ys[i]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    ctx.stroke();
+  }
+  if (mode !== "line"){
+    const sz = o.sizeEl ? o.sizeEl.value : "auto";
+    const rad = sz === "auto"
+      ? (xs.length > 400 ? 1.5 : xs.length > 120 ? 2.1 : 2.8)
+      : Number(sz);
+    ctx.fillStyle = mode === "scatter" ? CSSV("--accent") : CSSV("--accent2");
+    xs.forEach((_, i) => { ctx.beginPath(); ctx.arc(X(xs[i]), Y(ys[i]), rad, 0, 6.284); ctx.fill(); });
+  }
+
+  // overlay lines (fits, smoothing, …)
+  (o.lines || []).forEach(L => {
+    ctx.save();
+    ctx.strokeStyle = L.color || CSSV("--warn");
+    ctx.lineWidth = L.width || 1.6;
+    if (L.dash) ctx.setLineDash(L.dash);
+    ctx.beginPath();
+    L.xs.forEach((xv, i) => { const x = X(xv), y = Y(L.ys[i]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    ctx.stroke();
+    ctx.restore();
+  });
+
+  if (o.highlightLast){
+    ctx.fillStyle = CSSV("--accent"); ctx.beginPath();
+    ctx.arc(X(xs[xs.length-1]), Y(ys[ys.length-1]), 3.4, 0, 6.284); ctx.fill();
+  }
+
+  // labelled marks
+  ctx.textBaseline = "bottom";
+  (o.marks || []).forEach(r => {
+    const x = X(r.x), y = Y(r.y);
+    ctx.strokeStyle = CSSV("--tx"); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, P.t); ctx.lineTo(x, h - P.b); ctx.stroke();
+    ctx.fillStyle = CSSV("--tx"); ctx.beginPath(); ctx.arc(x, y, 3.2, 0, 6.284); ctx.fill();
+    const txt = r.label.length > 16 ? r.label.slice(0,15) + "…" : r.label;
+    ctx.textAlign = x < P.l + 46 ? "left" : (x > w - P.r - 46 ? "right" : "center");
+    ctx.fillText(txt, Math.min(Math.max(x, P.l + 3), w - P.r - 3), Math.max(y - 7, P.t + 11));
+  });
+
+  if (o.infoEl){
+    const durTxt = !timeAxis
+      ? "Δx " + span.toFixed(dec)
+      : (xu === "clock"
+          ? (span < 90 ? span.toFixed(0) + " s"
+            : span < 5400 ? (span/60).toFixed(1) + " min" : (span/3600).toFixed(2) + " h")
+          : spanU.toFixed(dec) + unit);
+    o.infoEl.textContent = (o.count || (n + " points")) + " · " + durTxt + (o.extra || "");
+  }
+}
+
+/* ---------------- trend chart (live readings) ---------------- */
+function drawChart(){
+  paintChart({
+    cv: $("chart"), infoEl: $("trendInfo"),
+    modeEl: $("plotMode"), sizeEl: $("ptSize"), axisEl: $("xAxis"),
+    xs: vals.map(r => (r.t.getTime() - t0) / 1000),
+    ys: vals.map(r => r.v),
+    base: t0,
+    yTitle: VAR.name || "Value",
+    marks: curated.map(r => ({ x: (r.t.getTime() - t0) / 1000, y: r.v, label: r.label })),
+    highlightLast: true,
+    count: vals.length + " readings",
+    extra: curated.length ? " · " + curated.length + " saved" : "",
+    empty: "no readings yet", emptyOne: "one reading so far…"
+  });
+}
+$("plotMode").onchange = () => { $("ptSize").disabled = ($("plotMode").value === "line"); drawChart(); };
+$("ptSize").onchange = () => drawChart();
+$("xAxis").onchange = () => drawChart();
+
+/* ---------------- analysis tab ---------------- */
+let CSVD = null;          // { name, cols:[string], rows:[[string]] }
+let SERIES = { xs: [], ys: [], base: null, xLabel: null, yName: "" };
+
+function parseCSV(text){
+  const head = (text.split(/\r?\n/)[0] || "");
+  const delim = [",", ";", "\t"].reduce((a, b) =>
+    head.split(b).length > head.split(a).length ? b : a, ",");
+  const out = []; let row = [], cell = "", q = false;
+  for (let i = 0; i < text.length; i++){
+    const c = text[i];
+    if (q){
+      if (c === '"'){ if (text[i+1] === '"'){ cell += '"'; i++; } else q = false; }
+      else cell += c;
+    }
+    else if (c === '"') q = true;
+    else if (c === delim){ row.push(cell); cell = ""; }
+    else if (c === '\n'){ row.push(cell); out.push(row); row = []; cell = ""; }
+    else if (c !== '\r') cell += c;
+  }
+  if (cell !== "" || row.length){ row.push(cell); out.push(row); }
+  return out.filter(r => r.some(x => x.trim() !== ""));
+}
+const isNumStr = v => v !== "" && isFinite(Number(v));
+
+function loadCSV(text, name){
+  const rows = parseCSV(text);
+  if (rows.length < 2){ $("fileInfo").textContent = "“" + name + "” has no data rows."; return; }
+  const first = rows[0];
+  const hasHeader = first.some(c => c.trim() !== "" && !isNumStr(c.trim()));
+  const cols = hasHeader ? first.map(c => c.trim()) : first.map((_, i) => "column " + (i + 1));
+  CSVD = { name, cols, rows: (hasHeader ? rows.slice(1) : rows) };
+  const fill = sel => {
+    sel.innerHTML = "";
+    cols.forEach((c, i) => sel.appendChild(new Option(c, String(i))));
+  };
+  fill($("colX")); fill($("colY"));
+  const find = re => cols.findIndex(c => re.test(c));
+  let xi = find(/^iso_?time|^timestamp|^time|^date/i);
+  if (xi < 0) xi = find(/elapsed|^t\b|\bsec/i);
+  if (xi < 0) xi = 0;
+  const numeric = c => CSVD.rows.some(r => isNumStr((r[c] || "").trim()));
+  let yi = cols.findIndex((c, k) => k !== xi && /value|reading|ppm|505|abs|signal|conc/i.test(c) && numeric(k));
+  if (yi < 0) for (let c = cols.length - 1; c >= 0; c--) if (c !== xi && numeric(c)){ yi = c; break; }
+  if (yi < 0) yi = Math.min(xi + 1, cols.length - 1);
+  $("colX").value = String(xi); $("colY").value = String(yi);
+  $("fileInfo").textContent = name + " — " + CSVD.rows.length + " rows, " + cols.length + " columns";
+  buildSeries();
+}
+function buildSeries(){
+  SERIES = { xs: [], ys: [], base: null, xLabel: null, yName: "" };
+  if (!CSVD) { drawAnalysis(); return; }
+  const xi = Number($("colX").value), yi = Number($("colY").value);
+  SERIES.yName = (CSVD.cols[yi] || "value").trim();
+  // files exported by this page carry the name in a "variable" column while the
+  // numbers sit under a generic "value" header — prefer the real name for the axis
+  const vi = CSVD.cols.findIndex(c => /^(variable|parameter|channel|series|quantity|name)$/i.test(c.trim()));
+  if (vi >= 0 && vi !== yi && /^(value|y|reading|data|result)$/i.test(SERIES.yName)){
+    const uniq = [];
+    CSVD.rows.forEach(r => {
+      const v = (r[vi] || "").trim();
+      if (v && uniq.indexOf(v) < 0) uniq.push(v);
+    });
+    if (uniq.length === 1) SERIES.yName = uniq[0];
+    else if (uniq.length > 1) SERIES.yName = SERIES.yName + "  (" + uniq.length + " variables mixed)";
+  }
+  const raw = [];
+  let timeMode = null;
+  CSVD.rows.forEach(r => {
+    const xr = (r[xi] || "").trim(), yr = (r[yi] || "").trim();
+    const y = Number(yr);
+    if (yr === "" || !isFinite(y)) return;
+    let x;
+    if (isNumStr(xr)){ x = Number(xr); if (timeMode === null) timeMode = false; }
+    else {
+      const ms = Date.parse(xr);
+      if (!isFinite(ms)) return;
+      x = ms; if (timeMode === null) timeMode = true;
+    }
+    raw.push([x, y]);
+  });
+  raw.sort((a, b) => a[0] - b[0]);
+  if (timeMode){
+    SERIES.base = raw.length ? raw[0][0] : null;
+    SERIES.xs = raw.map(r => (r[0] - SERIES.base) / 1000);
+  } else {
+    SERIES.xs = raw.map(r => r[0]);
+    SERIES.xLabel = CSVD.cols[xi] || "x";
+  }
+  SERIES.ys = raw.map(r => r[1]);
+  $("anaX").disabled = !!SERIES.xLabel;
+  $("anaTitle").textContent = SERIES.yName + (SERIES.xLabel ? "  vs  " + SERIES.xLabel : "  vs time");
+  runAnalysis();
+}
+$("colX").onchange = buildSeries;
+$("colY").onchange = buildSeries;
+
+/* --- analysis functions: add entries here --- */
+const mean = a => a.reduce((s, v) => s + v, 0) / a.length;
+const ANALYSES = [
+  { id: "summary", name: "Summary statistics",
+    run(xs, ys){
+      const sorted = ys.slice().sort((a, b) => a - b);
+      const mu = mean(ys);
+      const sd = Math.sqrt(ys.reduce((s, v) => s + (v - mu) * (v - mu), 0) / Math.max(ys.length - 1, 1));
+      const med = sorted.length % 2 ? sorted[(sorted.length-1)/2]
+                : (sorted[sorted.length/2 - 1] + sorted[sorted.length/2]) / 2;
+      return { stats: [
+        ["n", String(ys.length)],
+        ["mean", fmt(mu)], ["median", fmt(med)],
+        ["std dev", fmt(sd)], ["CV", (100*sd/mu).toFixed(2) + " %"],
+        ["min", fmt(sorted[0])], ["max", fmt(sorted[sorted.length-1])],
+        ["range", fmt(sorted[sorted.length-1] - sorted[0])],
+        ["first → last", fmt(ys[0]) + " → " + fmt(ys[ys.length-1])],
+        ["Δ", fmt(ys[ys.length-1] - ys[0])]
+      ]};
+    }},
+  { id: "linfit", name: "Linear fit   y = a·x + b",
+    run(xs, ys, _p, ctx){
+      const n = xs.length, mx = mean(xs), my = mean(ys);
+      let sxy = 0, sxx = 0, syy = 0;
+      for (let i = 0; i < n; i++){
+        sxy += (xs[i]-mx)*(ys[i]-my); sxx += (xs[i]-mx)*(xs[i]-mx); syy += (ys[i]-my)*(ys[i]-my);
+      }
+      const a = sxx ? sxy/sxx : 0, b = my - a*mx;
+      const r2 = (sxx && syy) ? (sxy*sxy)/(sxx*syy) : 0;
+      const xa = Math.min.apply(null, xs), xb = Math.max.apply(null, xs);
+      const per = ctx.xLabel ? " per " + ctx.xLabel : " / s";
+      const stats = [
+        ["slope a", fmt(a) + per],
+        ["intercept b", fmt(b)],
+        ["R²", r2.toFixed(5)],
+        ["n", String(n)]
+      ];
+      if (!ctx.xLabel){
+        stats.splice(1, 0, ["rate", fmt(a*60) + " / min"], ["rate", fmt(a*3600) + " / h"]);
+      }
+      return { stats, lines: [{ xs: [xa, xb], ys: [a*xa + b, a*xb + b], color: CSSV("--warn"), dash: [6,4] }] };
+    }},
+  { id: "movavg", name: "Moving average",
+    param: { label: "Window (points)", def: "9" },
+    run(xs, ys, p){
+      const k = Math.max(2, Math.min(Math.round(Number(p) || 9), ys.length));
+      const out = [], half = Math.floor(k/2);
+      for (let i = 0; i < ys.length; i++){
+        const a = Math.max(0, i-half), b = Math.min(ys.length-1, i+half);
+        out.push(mean(ys.slice(a, b+1)));
+      }
+      const resid = ys.map((v, i) => v - out[i]);
+      const rms = Math.sqrt(mean(resid.map(v => v*v)));
+      return { stats: [["window", k + " points"], ["noise (RMS about mean)", fmt(rms)],
+                       ["smoothed min", fmt(Math.min.apply(null, out))],
+                       ["smoothed max", fmt(Math.max.apply(null, out))]],
+               lines: [{ xs: xs, ys: out, color: CSSV("--ok"), width: 1.8 }] };
+    }},
+  { id: "none", name: "— plot only —", run(){ return { stats: [] }; } }
+];
+ANALYSES.forEach(a => $("anaFn").appendChild(new Option(a.name, a.id)));
+function currentAnalysis(){ return ANALYSES.find(a => a.id === $("anaFn").value) || ANALYSES[0]; }
+$("anaFn").onchange = () => {
+  const a = currentAnalysis();
+  $("anaParamWrap").hidden = !a.param;
+  if (a.param){ $("anaParamLbl").textContent = a.param.label; $("anaParam").value = a.param.def; }
+  runAnalysis();
+};
+$("anaParam").addEventListener("input", () => runAnalysis());
+
+function runAnalysis(){
+  const out = $("anaOut");
+  out.innerHTML = "";
+  let res = { stats: [], lines: [] };
+  if (SERIES.ys.length >= 2){
+    try {
+      res = currentAnalysis().run(SERIES.xs, SERIES.ys, $("anaParam").value, SERIES) || res;
+      $("anaNote").textContent = "";
+    } catch(e){ $("anaNote").textContent = "analysis failed: " + e.message; }
+  } else {
+    $("anaNote").textContent = CSVD ? "not enough numeric rows in these columns" : "";
+  }
+  (res.stats || []).forEach(([k, v]) => {
+    const d = document.createElement("div");
+    d.className = "stat";
+    d.innerHTML = '<div class="k"></div><div class="v"></div>';
+    d.children[0].textContent = k; d.children[1].textContent = v;
+    out.appendChild(d);
+  });
+  SERIES.lines = res.lines || [];
+  drawAnalysis();
+}
+function drawAnalysis(){
+  paintChart({
+    cv: $("anaChart"), infoEl: $("anaInfo"),
+    modeEl: $("anaMode"), sizeEl: $("anaPt"), axisEl: $("anaX"),
+    xs: SERIES.xs, ys: SERIES.ys, base: SERIES.base, xLabel: SERIES.xLabel,
+    yTitle: SERIES.yName || "Value",
+    lines: SERIES.lines || [],
+    count: SERIES.ys.length + " points",
+    empty: "load a .csv to plot it", emptyOne: "only one usable row"
+  });
+}
+$("anaMode").onchange = () => { $("anaPt").disabled = ($("anaMode").value === "line"); drawAnalysis(); };
+$("anaPt").onchange = () => drawAnalysis();
+$("anaX").onchange = () => drawAnalysis();
+
+/* file loading: button, drag & drop, or the run in memory */
+/* ---- the loaded CSV is cached, so the tab comes back with it after a reload ---- */
+const ANA_KEY = "kz_serial_ana_csv";
+const ANA_MAX = 2000000;                            // ~2 MB of text
+function cacheCSV(text, name){
+  try{
+    if (text.length > ANA_MAX){ sys("Loaded " + name + " \u2014 too large to keep across reloads (" +
+      Math.round(text.length/1e6) + " MB), it stays for this session only."); localStorage.removeItem(ANA_KEY); return; }
+    localStorage.setItem(ANA_KEY, JSON.stringify({name, text, at: Date.now()}));
+  }catch(e){ try{ localStorage.removeItem(ANA_KEY); }catch(e2){} }
+}
+function clearCSV(){
+  CSVD = null;
+  SERIES = { xs: [], ys: [], base: null, xLabel: null, yName: "" };
+  $("colX").innerHTML = ""; $("colY").innerHTML = "";
+  $("fileInfo").textContent = "no file loaded \u2014 or drop a .csv anywhere on this tab";
+  try{ localStorage.removeItem(ANA_KEY); }catch(e){}
+  runAnalysis(); drawAnalysis();
+}
+$("anaClear").onclick = () => { clearCSV(); anaText = ""; anaName = ""; anaHandle = null;
+  $("anaEditor").hidden = true; sys("Cleared the loaded CSV."); };
+(function restoreCSV(){
+  let raw = null;
+  try{ raw = localStorage.getItem(ANA_KEY); }catch(e){}
+  if (!raw) return;
+  try{
+    const o = JSON.parse(raw);
+    if (o && o.text) { loadCSV(o.text, o.name || "cached.csv"); setAnaText(o.text, o.name || "cached.csv");
+                       $("fileInfo").textContent += "  (cached)"; }
+  }catch(e){ try{ localStorage.removeItem(ANA_KEY); }catch(e2){} }
+})();
+
+/* ---- edit the loaded CSV in place ---- */
+let anaText = "", anaHandle = null;
+function setAnaText(t, name){ anaText = t; if (name !== undefined) anaName = name; }
+let anaName = "";
+const GRID_MAX = 2000;                              // rows the grid will render
+function syncAnaText(){
+  if (!CSVD) return "";
+  anaText = [csvRow(CSVD.cols)].concat(CSVD.rows.map(csvRow)).join(CRLF) + CRLF;
+  return anaText;
+}
+function gridEdited(){
+  syncAnaText();
+  cacheCSV(anaText, anaName || "edited.csv");
+  buildSeries();                                    // chart + analysis follow the edit
+  $("anaEditMsg").textContent = "edited \u2014 " + CSVD.rows.length + " rows (not yet written to file)";
+}
+function renderGrid(){
+  const box = $("anaGrid");
+  box.innerHTML = "";
+  if (!CSVD){ box.innerHTML = '<div class="empty dimnote" style="padding:14px">nothing loaded</div>'; return; }
+  if (CSVD.rows.length > GRID_MAX){
+    box.innerHTML = '<div class="dimnote" style="padding:14px">' + CSVD.rows.length +
+      ' rows \u2014 too many to edit cell by cell. Use Raw text.</div>';
+    return;
+  }
+  const t = document.createElement("table");
+  const thead = document.createElement("thead"), htr = document.createElement("tr");
+  htr.appendChild(document.createElement("th"));
+  CSVD.cols.forEach((c, ci) => {
+    const th = document.createElement("th");
+    th.textContent = c; th.contentEditable = "true";
+    th.onblur = () => { CSVD.cols[ci] = th.textContent.trim(); gridEdited(); };
+    htr.appendChild(th);
+  });
+  htr.appendChild(document.createElement("th"));
+  thead.appendChild(htr); t.appendChild(thead);
+  const tb = document.createElement("tbody");
+  CSVD.rows.forEach((r, ri) => {
+    const tr = document.createElement("tr");
+    const n = document.createElement("td"); n.className = "rn"; n.textContent = String(ri + 1);
+    tr.appendChild(n);
+    CSVD.cols.forEach((_, ci) => {
+      const td = document.createElement("td");
+      td.textContent = r[ci] === undefined ? "" : r[ci];
+      td.contentEditable = "true";
+      td.onblur = () => { r[ci] = td.textContent.trim(); gridEdited(); };
+      td.onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); td.blur(); } };
+      tr.appendChild(td);
+    });
+    const x = document.createElement("td");
+    const b = document.createElement("button");
+    b.className = "del"; b.textContent = "\u2715"; b.title = "Delete this row";
+    b.onclick = () => { CSVD.rows.splice(ri, 1); gridEdited(); renderGrid(); };
+    x.appendChild(b); tr.appendChild(x);
+    tb.appendChild(tr);
+  });
+  t.appendChild(tb); box.appendChild(t);
+}
+$("anaAddRow").onclick = () => {
+  if (!CSVD) return;
+  CSVD.rows.push(CSVD.cols.map(() => ""));
+  gridEdited(); renderGrid();
+  const rows = $("anaGrid").querySelectorAll("tbody tr");
+  const last = rows[rows.length - 1];
+  if (last) last.children[1].focus();
+};
+$("anaRaw").onclick = () => {
+  const raw = $("anaText").hidden;
+  if (raw){ $("anaText").value = syncAnaText(); $("anaText").hidden = false; $("anaGrid").hidden = true;
+            $("anaAddRow").disabled = true; $("anaRaw").textContent = "Table"; }
+  else { const t = $("anaText").value;                 // take the raw edits back into the grid
+         if (t.trim()){ loadCSV(t, anaName || "edited.csv"); cacheCSV(t, anaName || "edited.csv"); setAnaText(t); }
+         renderGrid();
+         $("anaText").hidden = true; $("anaGrid").hidden = false;
+         $("anaAddRow").disabled = false; $("anaRaw").textContent = "Raw text"; }
+};
+$("anaEdit").onclick = () => {
+  if (!anaText){ $("fileInfo").textContent = "nothing loaded to edit"; return; }
+  $("anaText").value = anaText;
+  renderGrid();
+  $("anaEditMsg").textContent = anaHandle ? "Update file writes back to " + anaHandle.name : "loaded without a file handle \u2014 Update file asks where to save";
+  $("anaEditor").hidden = false;
+  $("anaText").focus();
+};
+$("anaCancel").onclick = () => { $("anaEditor").hidden = true; $("anaEditMsg").textContent = ""; };
+$("anaApply").onclick = () => {
+  const t = $("anaText").hidden ? syncAnaText() : $("anaText").value;
+  if (!t.trim()){ $("anaEditMsg").textContent = "nothing to apply"; return; }
+  anaText = t;
+  loadCSV(t, anaName || "edited.csv");
+  cacheCSV(t, anaName || "edited.csv");
+  setAnaText(t);
+  renderGrid();
+  $("anaEditMsg").textContent = "applied \u2014 chart and analysis updated";
+  sys("Edited CSV applied (" + (CSVD ? CSVD.rows.length : 0) + " rows).");
+};
+$("anaSaveFile").onclick = async () => {
+  const t = $("anaText").hidden ? syncAnaText() : $("anaText").value;
+  if (!t.trim()){ $("anaEditMsg").textContent = "nothing to write"; return; }
+  $("anaApply").onclick();
+  if (!recSupported && !anaHandle){
+    download((anaName || "edited") .replace(/\.csv$/i, "") + "-edited.csv", t, "text/csv");
+    $("anaEditMsg").textContent = "downloaded (this browser cannot write files in place)";
+    return;
+  }
+  try{
+    if (!anaHandle){
+      anaHandle = await window.showSaveFilePicker({
+        suggestedName: (anaName || "edited").replace(/\.csv$/i, "") + ".csv",
+        types:[{description:"CSV file", accept:{"text/csv":[".csv"]}}],
+        ...(lastHandle ? {startIn: lastHandle} : {})});
+    }
+    if (!await havePermission(anaHandle, true)){ $("anaEditMsg").textContent = "write permission not granted"; anaHandle = null; return; }
+    const w = await anaHandle.createWritable();          // replaces the file with the edited text
+    await w.write(t);
+    await w.close();
+    anaName = anaHandle.name; lastHandle = anaHandle;
+    $("anaEditMsg").textContent = "written to " + anaHandle.name;
+    sys("Updated " + anaHandle.name + " with the edited CSV.");
+  }catch(e){
+    if (e.name === "AbortError"){ $("anaEditMsg").textContent = "cancelled"; anaHandle = null; return; }
+    err("Could not write the file: " + e.name + " \u2014 " + e.message);
+    $("anaEditMsg").textContent = "write failed";
+  }
+};
+
+function readFile(f){
+  if (!f) return;
+  const fr = new FileReader();
+  fr.onload = () => { const t = String(fr.result); loadCSV(t, f.name); cacheCSV(t, f.name); setAnaText(t, f.name); anaHandle = null; };
+  fr.onerror = () => { $("fileInfo").textContent = "could not read " + f.name; };
+  fr.readAsText(f);
+}
+$("btnLoad").onclick = async () => {
+  if (typeof window.showOpenFilePicker === "function"){
+    let h;
+    try{
+      [h] = await window.showOpenFilePicker({types:[{description:"CSV file", accept:{"text/csv":[".csv",".txt"]}}],
+                                             ...(lastHandle ? {startIn: lastHandle} : {})});
+    }catch(e){ if (e.name !== "AbortError") err("Could not open the file: " + e.message); return; }
+    const t = await (await h.getFile()).text();
+    loadCSV(t, h.name); cacheCSV(t, h.name); setAnaText(t, h.name);
+    anaHandle = h; lastHandle = h;
+    return;
+  }
+  $("fileIn").click();
+};
+$("fileIn").onchange = e => { readFile(e.target.files[0]); e.target.value = ""; };
+$("anaUseRun").onclick = () => {
+  if (!vals.length){ $("fileInfo").textContent = "no readings in this session yet"; return; }
+  const out = [csvHeader()];
+  vals.forEach(r => out.push(csvRow([r.t.toISOString(), ((r.t.getTime()-t0)/1000).toFixed(3), r.v, r.label||""])));
+  const t = out.join(CRLF);
+  loadCSV(t, "current run");
+  cacheCSV(t, "current run");
+  setAnaText(t, "current run"); anaHandle = null;
+};
+const anaTab = $("tabAnalysis");
+["dragenter","dragover"].forEach(ev => anaTab.addEventListener(ev, e => {
+  e.preventDefault(); anaTab.classList.add("drop");
+}));
+["dragleave","drop"].forEach(ev => anaTab.addEventListener(ev, e => {
+  e.preventDefault(); anaTab.classList.remove("drop");
+}));
+anaTab.addEventListener("drop", e => {
+  if (e.dataTransfer && e.dataTransfer.files.length) readFile(e.dataTransfer.files[0]);
+});
+
+let resizeT = null;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeT);
+  resizeT = setTimeout(() => {
+    if ($("tabTrend").classList.contains("sel")) drawChart();
+    if ($("tabAnalysis").classList.contains("sel")) drawAnalysis();
+  }, 150);
+});
+
+/* ---------------- export / clear ---------------- */
+function fileStamp(){
+  const d = new Date();
+  return d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+"-"+pad(d.getHours())+pad(d.getMinutes())+pad(d.getSeconds());
+}
+function download(name, text, mime){
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], {type: mime}));
+  a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+/* ---- RFC 4180 CSV: quote only when needed, CRLF row endings ---- */
+const csvCell = v => {
+  const t = v === null || v === undefined ? "" : String(v);
+  return /[",\r\n]|^\s|\s$/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+};
+const csvRow = a => a.map(csvCell).join(",");
+const CRLF = "\r\n";
+const q = csvCell;                       // kept for older call sites
+const valCol = () => VAR.name || "value";           // the variable's own label is the column name
+const csvHeader = () => csvRow(["iso_time", "elapsed_s", valCol(), "label"]);
+const slug = () => (VAR.name || "value").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
+$("btnCsv").onclick = () => {
+  const out = [csvHeader()];
+  vals.forEach(r => out.push(csvRow([r.t.toISOString(), ((r.t.getTime()-t0)/1000).toFixed(3), r.v, r.label||""])));
+  download("trend-"+slug()+"-"+fileStamp()+".csv", out.join(CRLF)+CRLF, "text/csv");
+};
+$("btnCurCsv").onclick = () => {
+  const out = [csvRow(["n", "label", "iso_time", "elapsed_s", valCol()])];
+  curated.forEach((r,i) => out.push(csvRow([i+1, r.label, r.t.toISOString(),
+    ((r.t.getTime()-t0)/1000).toFixed(3), r.v])));
+  download("saved-points-"+slug()+"-"+fileStamp()+".csv", out.join(CRLF)+CRLF, "text/csv");
+};
+/* ---------------- load a .csv back into the tables ---------------- */
+function rowsOf(text){ const r = parseCSV(text); return r.length > 1 ? r : []; }
+
+function loadPoints(text, name){
+  const rws = rowsOf(text);
+  if (!rws.length){ err("No rows found in " + name + "."); return 0; }
+  const head = rws[0].map(x => x.trim().toLowerCase());
+  const iN = head.indexOf("n"), iL = head.indexOf("label"), iT = head.indexOf("iso_time");
+  const iV = head.length - 1;                       // value column is named after the variable
+  if (iL < 0 || iT < 0){ err(name + " does not look like a saved-points file (needs label and iso_time columns)."); return 0; }
+  curated.forEach(r => { if (r.entry){ r.entry.label = ""; if (r.entry.el) r.entry.el.textContent = ""; } });
+  curated.length = 0;
+  let n = 0;
+  rws.slice(1).forEach(r => {
+    const t = new Date(Date.parse(r[iT])), v = parseFloat(r[iV]);
+    if (!isFinite(t.getTime()) || !isFinite(v)) return;
+    curated.push({ label: r[iL] || ("Point " + (curated.length + 1)), t, v });
+    n++;
+  });
+  curBase = Math.max(curBase, iN >= 0
+    ? rws.slice(1).reduce((m, r) => Math.max(m, parseInt(r[iN], 10) || 0), 0) : n);
+  renderCurated();
+  if ($("tabTrend").classList.contains("sel")) drawChart();
+  sys("Loaded " + n + " saved point(s) from " + name + ".");
+  return n;
+}
+function loadReadings(text, name){
+  const rws = rowsOf(text);
+  if (!rws.length){ err("No rows found in " + name + "."); return 0; }
+  const head = rws[0].map(x => x.trim().toLowerCase());
+  const iT = head.indexOf("iso_time"), iL = head.indexOf("label");
+  const iV = head.findIndex((h, i) => i !== iT && i !== iL && h !== "elapsed_s");
+  if (iT < 0 || iV < 0){ err(name + " does not look like a readings file (needs iso_time and a value column)."); return 0; }
+  if (!VAR.name && rws[0][iV]) setVariable(rws[0][iV].trim());
+  clearReadings();
+  let n = 0;
+  rws.slice(1).forEach(r => {
+    const t = new Date(Date.parse(r[iT])), v = parseFloat(r[iV]);
+    if (!isFinite(t.getTime()) || !isFinite(v)) return;
+    pushValue(v, t);
+    const lab = iL >= 0 ? (r[iL] || "") : "";
+    if (lab){ const e = vals[vals.length - 1]; e.label = lab; if (e.el) e.el.textContent = lab; }
+    n++;
+  });
+  recCursor = vals.length;                          // loaded rows are already on disk somewhere
+  if (n) $("btnCsvTop").disabled = false;
+  drawChart();
+  sys("Loaded " + n + " reading(s) from " + name + ". Recording appends new rows only.");
+  return n;
+}
+function readInto(file, fn){
+  const r = new FileReader();
+  r.onload = () => fn(String(r.result), file.name);
+  r.onerror = () => err("Could not read " + file.name + ".");
+  r.readAsText(file);
+}
+/* the points file is also the append target, so pick it with a handle when possible */
+$("btnCurLoad").onclick = async () => {
+  if (typeof window.showOpenFilePicker === "function"){
+    let h;
+    try{
+      [h] = await window.showOpenFilePicker({types:[{description:"CSV file", accept:{"text/csv":[".csv",".txt"]}}],
+                                             ...(lastHandle ? {startIn: lastHandle} : {})});
+    }catch(e){ if (e.name !== "AbortError") err("Could not open the file: " + e.message); return; }
+    const f = await h.getFile();
+    const n = loadPoints(await f.text(), h.name);
+    if (!n) return;
+    if (await havePermission(h, true)){
+      curHandle = h; curName = h.name; curWritten = curated.length; curSkip = false; lastHandle = h;
+      curOwnsFile = true; curBase = curated.length; curWarned = false;
+      await idbPut("points", h);
+      curState();
+      sys("New points will be appended to " + curName + ", continuing from " + (curBase + 1)
+        + ". Edits in the table rewrite the file.");
+    }else sys("Loaded read-only \u2014 new points are not written to that file.");
+    return;
+  }
+  $("curFileIn").click();                           // no handle available: load only
+};
+$("curFileIn").onchange = e => { const f = e.target.files[0]; if (f) readInto(f, loadPoints); e.target.value = ""; };
+$("btnValsLoad").onclick = () => $("valsFileIn").click();
+$("valsFileIn").onchange = e => { const f = e.target.files[0]; if (f) readInto(f, loadReadings); e.target.value = ""; };
+
+$("btnCurClear").onclick = () => {
+  if (curHandle) sys("Cleared the table \u2014 rows already written to " + curName + " stay in the file.");
+  curated.forEach(r => { if (r.entry){ r.entry.label = ""; if (r.entry.el) r.entry.el.textContent = ""; } });
+  curated.length = 0; renderCurated();
+  if ($("tabTrend").classList.contains("sel")) drawChart();
+};
+function clearReadings(){
+  vals.length = 0; t0 = null; lastT = null;
+  recCursor = 0;
+  $("btnCsvTop").disabled = true;
+  curated.length = 0; renderCurated();
+  $("histBody").innerHTML = ""; $("nVals").textContent = "0";
+  $("bigVal").textContent = "—"; $("bigVal").classList.add("stale");
+  $("capVal").textContent = "—"; $("capVal").className = "capval none";
+  $("bigTs").textContent = VAR.name
+    ? (port ? "waiting for “" + VAR.name + "”…" : "not connected")
+    : "pick a variable of interest, top left";
+  drawChart();
+}
+$("btnClearVals").onclick = clearReadings;
+$("btnClear").onclick = () => {
+  $("console").innerHTML = ""; rows.length = 0;
+  lineCount = 0; rxBytes = 0; txBytes = 0;
+  $("nLines").textContent = "0"; $("nRx").textContent = "0"; $("nTx").textContent = "0";
+};
+$("btnCopy").onclick = async () => {
+  if (!rows.length){ sys("Nothing in the log to copy yet."); return; }
+  const text = rows.map(r => stamp(r.t)+"\t"+r.dir+"\t"+r.text).join("\n");
+  const b = $("btnCopy"), was = b.textContent;
+  try{
+    if (navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(text);
+    else{                                     // a file:// page has no clipboard API
+      const ta = document.createElement("textarea");
+      ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select();
+      const ok = document.execCommand("copy");
+      ta.remove();
+      if (!ok) throw new Error("copy blocked");
+    }
+    b.textContent = "Copied ✓"; setTimeout(() => b.textContent = was, 1400);
+    sys("Log copied to the clipboard (" + rows.length + " lines).");
+  }catch(e){
+    err("Could not copy the log: " + e.message + " — use Download raw .txt instead.");
+  }
+};
+$("btnTxt").onclick = () => download("serial-raw-"+fileStamp()+".txt",
+  rows.map(r => stamp(r.t)+"\t"+r.dir+"\t"+r.text).join("\n"), "text/plain");
+
+
+
+/* ---------------- automatic channel ---------------- */
+const AUTO_CHANNEL = "505-525nm";                 // what the sensor prints
+
+function autoChan(){ return $("optAutoChan").checked; }
+function applyChanMode(){
+  const auto = autoChan();
+  try{ localStorage.setItem("kz_serial_autochan", auto ? "1" : "0"); }catch(e){}
+  $("varBtn").disabled = auto;
+  $("varBtn").title = auto
+    ? "Fixed to " + AUTO_CHANNEL + " \u2014 turn the Settings option off to choose another channel"
+    : "Choose which line to log";
+  if (auto){ closePop(); if (port && VAR.name !== AUTO_CHANNEL) setVariable(AUTO_CHANNEL); }
+}
+$("optAutoChan").onchange = () => {
+  applyChanMode();
+  sys(autoChan() ? "Channel fixed to " + AUTO_CHANNEL + " on connection."
+                 : "Channel selection unlocked \u2014 pick it from \u201c+ Variable of interest\u201d.");
+};
+try{ $("optAutoChan").checked = localStorage.getItem("kz_serial_autochan") !== "0"; }catch(e){}
+
+/* ---------------- record to disk (File System Access API) ----------------
+   Rows are appended to the chosen .csv every 2 s while readings arrive, and
+   the file is closed after each write, so an interrupted run is still on disk. */
+let fileHandle = null, lastHandle = null, recCursor = 0, recTimer = null, recName = "", recRows = 0;
+const recSupported = typeof window.showSaveFilePicker === "function";
+
+function idb(){
+  return new Promise((res, rej) => {
+    const r = indexedDB.open("kz_serial_logger", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("h");
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function idbPut(k, v){ try{ const db = await idb(); db.transaction("h","readwrite").objectStore("h").put(v,k); }catch(e){} }
+async function idbGet(k){
+  try{
+    const db = await idb();
+    return await new Promise(res => {
+      const q = db.transaction("h","readonly").objectStore("h").get(k);
+      q.onsuccess = () => res(q.result || null);
+      q.onerror = () => res(null);
+    });
+  }catch(e){ return null; }
+}
+async function havePermission(h, ask){
+  const opts = {mode:"readwrite"};
+  if (!h || !h.queryPermission) return false;
+  if (await h.queryPermission(opts) === "granted") return true;
+  return ask ? (await h.requestPermission(opts)) === "granted" : false;
+}
+
+let recVar = "";
+
+function recState(){
+  const pill = $("recPill"), btn = $("btnRec");
+  if (fileHandle){
+    pill.hidden = false;
+    pill.textContent = "recording → " + recName + "  (" + recRows + " rows)";
+    btn.classList.add("recording");
+    btn.title = "Recording to " + recName + " — click to stop";
+  }else{
+    pill.hidden = true;
+    btn.classList.remove("recording");
+    btn.title = "Record readings to a .csv on disk";
+  }
+}
+
+async function appendTo(h, text){
+  if (!h || !text) return;
+  const w = await h.createWritable({keepExistingData:true});
+  await w.seek((await h.getFile()).size);
+  await w.write(text);
+  await w.close();
+}
+async function writeChunk(text){ if (fileHandle) await appendTo(fileHandle, text); }
+
+/* ---- saved data points: picked once, appended on every Save ---- */
+let curHandle = null, curName = "", curWritten = 0, curSkip = false, curBase = 0;
+const curHeader = () => csvRow(["n", "label", "iso_time", "elapsed_s", valCol()]);
+function curState(){
+  $("curFileState").textContent = curHandle
+    ? "writing to " + curName + " (" + curWritten + " saved)"
+    : (curSkip ? "not saved to disk \u2014 use Download" : "not saved to disk yet");
+}
+async function ensureCurFile(){
+  if (curHandle) return true;
+  if (curSkip) return false;
+  if (!recSupported){
+    curSkip = true;
+    err("This browser cannot write files directly \u2014 saved points stay in the page; use Download. "
+      + "Chrome and Edge can write, but not from a file:// page.");
+    return false;
+  }
+  try{
+    const opts = {suggestedName: "points-" + slug() + "-" + fileStamp() + ".csv",
+                  types:[{description:"CSV file", accept:{"text/csv":[".csv"]}}]};
+    if (lastHandle) opts.startIn = lastHandle;
+    curHandle = await window.showSaveFilePicker(opts);
+  }catch(e){
+    curHandle = null; curSkip = true;
+    sys(e.name === "AbortError"
+      ? "No file chosen \u2014 saved points stay in the page only (Download exports them; reload to be asked again)."
+      : "Could not open the file picker: " + e.name + " \u2014 " + e.message);
+    curState(); return false;
+  }
+  if (!await havePermission(curHandle, true)){
+    curHandle = null; curSkip = true;
+    err("Permission to write that file was not granted.");
+    curState(); return false;
+  }
+  curName = curHandle.name; curWritten = 0;
+  try{
+    const f = await curHandle.getFile();
+    if (f.size > 0){
+      const text = await f.text();
+      const rws = parseCSV(text);
+      const head = (rws[0] || []).map(x => x.trim());
+      const ours = ["n", "label", "iso_time", "elapsed_s", valCol()];
+      const same = head.length === ours.length && head.every((h, i) => h.toLowerCase() === ours[i].toLowerCase());
+      curBase = 0;
+      rws.slice(1).forEach(r => { const n = parseInt(r[0], 10); if (isFinite(n) && n > curBase) curBase = n; });
+      if (!/\r?\n$/.test(text)) await appendTo(curHandle, CRLF);
+      curOwnsFile = false;
+      sys("Appending saved points to " + curName + " \u2014 " + curBase + " point(s) already in it, new ones continue from "
+        + (curBase + 1) + "."
+        + (same ? "" : "  Its header is [" + head.join(" | ") + "], this page writes [" + ours.join(" | ") + "]."));
+    }else{
+      curBase = 0;
+      await appendTo(curHandle, curHeader() + CRLF);
+      curOwnsFile = true;
+      sys("Saved points go to " + curName + " \u2014 every Save is written straight to disk.");
+    }
+  }catch(e){
+    curHandle = null;
+    err("Could not open " + curName + ": " + e.name + " \u2014 " + e.message);
+    curState(); return false;
+  }
+  lastHandle = curHandle;
+  await idbPut("points", curHandle);
+  curState();
+  return true;
+}
+let curOwnsFile = false, curWarned = false;
+const elapsedOf = t => t0 === null ? "" : ((t.getTime() - t0) / 1000).toFixed(3);
+function pointsEdited(){
+  if ($("tabTrend").classList.contains("sel")) drawChart();
+  rewritePoints();
+}
+async function rewritePoints(){
+  if (!curHandle) return;
+  if (!curOwnsFile){
+    if (!curWarned){
+      curWarned = true;
+      sys("Edited in the page \u2014 " + curName + " was appended to, so the rows before this session "
+        + "are not in the table and the file is left as it is. Use Download for the edited table.");
+    }
+    return;
+  }
+  try{
+    const w = await curHandle.createWritable();        // full rewrite: edits change rows already written
+    await w.write([curHeader()].concat(curated.map((r, i) =>
+      csvRow([i + 1, r.label, r.t.toISOString(), elapsedOf(r.t), r.v]))).join(CRLF) + CRLF);
+    await w.close();
+    curWritten = curated.length; curBase = curated.length;
+    curState();
+  }catch(e){
+    err("Could not update " + curName + ": " + e.name + " \u2014 " + e.message);
+  }
+}
+async function writeCuratedRow(r, n){
+  if (!await ensureCurFile()) return;
+  try{
+    await appendTo(curHandle, csvRow([curBase + n, r.label, r.t.toISOString(),
+      elapsedOf(r.t), r.v]) + CRLF);
+    curWritten++;
+    curState();
+  }catch(e){
+    err("Could not write the point to " + curName + ": " + e.name + " \u2014 " + e.message);
+    curHandle = null; curSkip = true; curState();
+  }
+}
+async function flushToDisk(){
+  if (!fileHandle || recCursor >= vals.length) return;
+  const batch = vals.slice(recCursor);
+  if (VAR.name !== recVar){
+    sys("Variable changed to “" + valCol() + "” while recording — " + recName
+      + " keeps the column name “" + (recVar || "value") + "”. Stop and start recording for a clean file.");
+    recVar = VAR.name;
+  }
+  const text = batch.map(r => csvRow([r.t.toISOString(), ((r.t.getTime()-t0)/1000).toFixed(3),
+    r.v, r.label || ""])).join(CRLF) + CRLF;
+  try{
+    await writeChunk(text);
+    recCursor = vals.length;
+    recRows += batch.length;
+    recState();
+  }catch(e){
+    err("CSV write failed — recording stopped: " + e.name + " — " + e.message);
+    await stopRecording(true);
+  }
+}
+async function startRecording(){
+  if (!recSupported){
+    err("This browser cannot write files directly. Use Chrome or Edge — and not from a file:// page: "
+      + "serve the folder with  python3 -m http.server 8000  and open http://localhost:8000/ (or use https://singaporetech-zhou-kang.github.io/serial-data-logger/)");
+    return;
+  }
+  const suggested = "log-" + slug() + "-" + fileStamp() + ".csv";
+  try{
+    const opts = {suggestedName: suggested, types:[{description:"CSV file", accept:{"text/csv":[".csv"]}}]};
+    if (lastHandle) opts.startIn = lastHandle;
+    fileHandle = await window.showSaveFilePicker(opts);
+  }catch(e){
+    if (e.name === "AbortError") sys("Recording cancelled — no file chosen.");
+    else err("Could not open the file picker: " + e.name + " — " + e.message
+      + (location.protocol === "file:" ? "   (a file:// page may not write files — serve the page over http://localhost instead)" : ""));
+    fileHandle = null; return;
+  }
+  if (!await havePermission(fileHandle, true)){
+    err("Permission to write that file was not granted.");
+    fileHandle = null; return;
+  }
+  recName = fileHandle.name; recRows = 0; recCursor = 0; recVar = VAR.name;
+  try{
+    const f = await fileHandle.getFile();
+    if (f.size > 0){
+      const text = await f.text();
+      const head = (parseCSV(text)[0] || []).map(x => x.trim());
+      const ours = [ "iso_time", "elapsed_s", valCol(), "label" ];
+      const same = head.length === ours.length && head.every((h,i) => h.toLowerCase() === ours[i].toLowerCase());
+      if (same) sys("Appending to existing file " + recName + ".");
+      else sys("Appending to " + recName + " — its header is [" + head.join(" | ")
+        + "], this page writes [" + ours.join(" | ") + "]. Rows go in the page's order.");
+      if (!/\r?\n$/.test(text)) await writeChunk(CRLF);
+    }else{
+      await writeChunk(csvHeader() + CRLF);
+      sys("Recording started — new file " + recName + ".");
+    }
+  }catch(e){
+    err("Could not open " + recName + ": " + e.name + " — " + e.message);
+    fileHandle = null; return;
+  }
+  await idbPut("file", fileHandle);
+  lastHandle = fileHandle;
+  await flushToDisk();                       // readings already taken this session
+  recTimer = setInterval(flushToDisk, 2000);
+  recState();
+  sys("Rows are appended every 2 s; labels added after a row is written are not back-filled.");
+}
+async function stopRecording(quiet){
+  clearInterval(recTimer); recTimer = null;
+  if (fileHandle && !quiet) await flushToDisk();
+  const n = recRows, nm = recName;
+  fileHandle = null;
+  recState();
+  if (nm && !quiet) sys("Recording stopped — " + n + " rows written to " + nm + ".");
+}
+$("btnRec").onclick = async () => {
+  if (fileHandle) await stopRecording(false);
+  else await startRecording();
+};
+(async () => { if (recSupported) lastHandle = await idbGet("file"); })();
+window.addEventListener("beforeunload", () => { if (fileHandle) flushToDisk(); });
+
+$("btnCsvTop").onclick = () => $("btnCsv").onclick();
+
+/* ---------------- theme (light by default) ---------------- */
+function setTheme(t){
+  if (t === "dark") document.documentElement.setAttribute("data-theme", "dark");
+  else document.documentElement.removeAttribute("data-theme");
+  try{ localStorage.setItem("kz_serial_theme", t); }catch(e){}
+  $("btnTheme").title = t === "dark" ? "Switch to the light theme" : "Switch to the dark theme";
+  if ($("tabTrend").classList.contains("sel")) drawChart();
+  if ($("tabAnalysis").classList.contains("sel")) drawAnalysis();
+}
+$("btnTheme").onclick = () =>
+  setTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark");
+setTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light");
+
+/* ---------------- hot-plug ---------------- */
+if ("serial" in navigator){
+  navigator.serial.addEventListener("connect", () => { sys("USB device plugged in."); refreshPorts(); });
+  navigator.serial.addEventListener("disconnect", e => {
+    if (port && e.target === port) closePort("Device unplugged.");
+    else refreshPorts();
+  });
+  refreshPorts();
+}
+window.addEventListener("beforeunload", () => { if (port) closePort(null); });
+
+renderCurated();
+updateVarUI();
+$("anaFn").onchange();
+buildQuick();
+renderParams();
+curState();
+applyChanMode();
+setState("off");
+sys("Ready. Connect from the USB button (top right), set the variable of interest (top left), then hit the record button to stream rows to a .csv.");
+recState();
+</script>
+</body>
+</html>
