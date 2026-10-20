@@ -22,7 +22,8 @@
     --banner-bg:#fdf4e3; --banner-fg:#6b4e16;
     --shadow:0 10px 30px rgba(0,0,0,.12);
     --device-shadow:0 10px 40px rgba(30,40,40,.10),0 1px 3px rgba(0,0,0,.05);
-    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"DejaVu Sans Mono","Liberation Mono","Ubuntu Mono",monospace;
+    --font:"Segoe UI","Helvetica Neue",Arial,"Liberation Sans","Noto Sans",Ubuntu,"DejaVu Sans",sans-serif;
   }
   :root[data-theme="dark"]{
     color-scheme:dark;
@@ -38,7 +39,7 @@
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--txt);
-    font:14px/1.45 "Segoe UI","Helvetica Neue",Arial,sans-serif}
+    font:14px/1.45 var(--font)}
   header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;
     padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
   h1{font-size:15px;margin:0;font-weight:600;letter-spacing:.2px}
@@ -217,6 +218,15 @@
   .stat{border-radius:12px}
   .banner{border-radius:12px}
   .credits{border-top:1px solid var(--line2);padding:12px 22px 16px;max-width:none}
+  /* touch screens (Android phones and tablets): finger-sized controls */
+  @media (pointer:coarse){
+    button,select,input{min-height:40px}
+    button.sm,.seen button,.quick button,button.del{min-height:36px}
+    .icon{width:42px;height:42px}
+    .chk input{width:20px;height:20px}
+  }
+  .reclist{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+  .reclist .row{justify-content:space-between}
   @media (max-width:640px){
     body{padding:0}
     .device{border-radius:0;box-shadow:none}
@@ -285,11 +295,8 @@
 </header>
 
 <main>
-  <div class="banner" id="unsupported" style="display:none">
-    This browser does not expose <code>navigator.serial</code>. Use <b>Chrome</b> or <b>Edge</b> on a computer.
-    If you opened the file directly and it still fails, serve the folder locally
-    (<code>python3 -m http.server 8000</code>) and open <code>http://localhost:8000/</code>, or use the hosted copy at <code>https://singaporetech-zhou-kang.github.io/serial-data-logger/</code>.
-  </div>
+  <div class="banner" id="unsupported" style="display:none"></div>
+  <div class="banner" id="platNote" hidden></div>
 
   <div class="tabs">
     <button id="tabReadingBtn" class="sel">Reading</button>
@@ -309,7 +316,7 @@
         <div class="meta">
           <span>Readings: <b id="nVals">0</b></span>
           <span>Last: <b id="ago">—</b></span>
-          <span>Gain: <b id="gainNow">—</b></span>
+          <span id="paramNow" hidden></span>
         </div>
       </div>
     </div>
@@ -327,7 +334,7 @@
       <div class="row">
         <div class="field" style="flex:1;min-width:220px">
           <label for="curLabel">Label</label>
-          <input type="text" id="curLabel" placeholder="e.g. Blank, Standard 5 mg/L, Sample A" style="width:100%">
+          <input type="text" id="curLabel" placeholder="" style="width:100%">
         </div>
         <div class="field">
           <label>Value (latest reading)</label>
@@ -478,18 +485,31 @@
     <div id="setBody">
     <div class="card">
       <div class="row">
+        <label style="align-self:center">Device profile</label>
+        <b id="devName"></b>
+      </div>
+      <div class="dimnote" style="margin-top:6px" id="devNote"></div>
+    </div>
+    <div class="card" id="autoCard">
+      <div class="row">
         <label class="chk"><input type="checkbox" id="optAutoChan" checked>
-          Use the 505-525 nm channel automatically on connection</label>
+          <span>Use <span id="autoText"></span> automatically on connection</span></label>
       </div>
       <div class="dimnote" style="margin-top:8px">Off: the channel stays yours to pick from
         “+ Variable of interest”, top left.</div>
     </div>
-    <div class="card">
+    <div class="card" id="keptCard" hidden>
+      <div class="row"><label style="align-self:center">Recordings kept in this browser</label></div>
+      <div class="dimnote" style="margin-top:4px">Copies of recordings made without a file picker (Android). They stay until you delete them.</div>
+      <div class="reclist" id="keptList"></div>
+    </div>
+    <div class="card" id="paramCard">
       <div class="row" style="margin-bottom:6px">
         <label style="align-self:center">Device parameters</label>
         <span style="flex:1"></span>
         <span class="ptime" id="lastReportTs"></span>
       </div>
+      <div style="overflow-x:auto">
       <table class="params">
         <thead><tr>
           <th style="width:22%">Parameter</th>
@@ -500,10 +520,12 @@
         </tr></thead>
         <tbody id="paramBody"></tbody>
       </table>
+      </div>
       <details style="margin-top:10px"><summary>How it works</summary>
         <div class="dimnote" style="margin-top:6px">Apply sends <code>Set, &lt;name&gt;, &lt;value&gt;</code> on the serial link.
-        Any incoming line of the form <code>Gain: 16x</code>, <code>Gain = 16</code>, <code>Set, Gain, 16x</code>,
-        <code>Report, Gain, 16x</code> — or a CSV row under a header carrying that column — updates
+        Any incoming line of the form <code class="pex">Gain: 16x</code>, <code class="pex">Gain = 16</code>,
+        <code class="pex">Set, Gain, 16x</code>, <code class="pex">Report, Gain, 16x</code>
+        — or a CSV row under a header carrying that column — updates
         “Latest reported”, and the status tag says whether the device confirmed the value you chose.</div>
       </details>
     </div>
@@ -564,12 +586,170 @@
 "use strict";
 const $ = id => document.getElementById(id);
 
+/* ======================== DEVICE PROFILES ========================
+   Everything specific to one instrument lives here; the rest of the page is a general
+   Web Serial logger. Choose a profile with ?device=<id> in the address, e.g.
+     …/serial-data-logger/                  the spectrophotometer (default)
+     …/serial-data-logger/?device=generic   any serial device: no fixed channel, no parameters
+   To support another instrument, add a profile here; nothing else needs to change.
+
+   name          shown in Settings
+   autoVariable  channel label exactly as the device prints it ("505-525nm, 0.123"); logged on connect
+                 when the Settings switch is on. "" = the user always picks the variable.
+   autoText      how that channel is described to the user
+   params        device parameters for the Settings table, sent as  Set, <name>, <value>.
+                 onReading: also show the latest reported value under the big reading.
+   labelHint     placeholder for the label of a saved data point
+   baud          default baud rate                                                      */
+const PROFILES = {
+  spectro: {
+    name: "Spectrophotometer (505\u2013525 nm channel)",
+    autoVariable: "505-525nm",
+    autoText: "the 505\u2013525 nm channel",
+    params: [
+      { name: "Gain",
+        values: ["0.5x","1x","2x","4x","8x","16x","32x","64x","128x","256x","512x"],
+        def: "16x", onReading: true }
+    ],
+    labelHint: "e.g. Blank, Standard 5 mg/L, Sample A",
+    baud: 115200
+  },
+  generic: {
+    name: "Any serial device",
+    autoVariable: "",
+    autoText: "",
+    params: [],
+    labelHint: "e.g. Sample A, Run 2",
+    baud: 115200
+  }
+};
+const DEVICE_ID = (() => {
+  const q = (new URLSearchParams(location.search).get("device") || "").toLowerCase();
+  return PROFILES[q] ? q : "spectro";
+})();
+const DEVICE = PROFILES[DEVICE_ID];
+/* ==================================================================== */
+
 /* USB-serial vendor IDs — keeps Bluetooth / debug-console ports out of the picker */
 const USB_FILTERS = [
   0x2341, 0x2A03, 0x239A, 0x303A, 0x1A86, 0x10C4, 0x0403, 0x067B, 0x2E8A,
   0x16C0, 0x1B4F, 0x04D8, 0x0483, 0x1FC9, 0x03EB, 0x0D28, 0x1366, 0x0925,
   0x1D50, 0x2C99, 0x1546, 0x0451, 0x1A61
 ].map(v => ({ usbVendorId: v }));
+
+/* ---------------- platform + USB transport ----------------
+   Computers (Windows, macOS, Ubuntu): Web Serial in Chrome or Edge.
+   Android: Chrome's Web Serial may only reach Bluetooth, so USB goes through a small WebUSB
+   driver for USB CDC serial devices (ESP32-S3/C3/C6 native USB, RP2040, Arduino Leonardo/Micro,
+   SAMD, STM32 CDC …). USB-serial bridge chips (CH340, CP210x, FTDI) need their own drivers and
+   don't work on Android. Ported from Pod Web OS (kz-pod-coordinator).                         */
+const HOSTED = "https://tools.zhou-kang-group.org/serial-data-logger/";
+const UA = navigator.userAgent;
+const android = /Android/i.test(UA) || (navigator.userAgentData && navigator.userAgentData.platform === "Android");
+const linuxOs = /Linux/i.test(UA) && !android;
+function createUsbSerial(usb){
+  const ports = new Map();
+  const events = new EventTarget();
+  class UsbPort {
+    constructor(device){ this.device = device; this.readable = this.writable = null; this.session = null; }
+    getInfo(){ return {usbVendorId: this.device.vendorId, usbProductId: this.device.productId}; }
+    async control(request, value, data){
+      const result = await this.device.controlTransferOut({requestType: "class", recipient: "interface", request, value, index: this.controlInterface}, data);
+      if(result.status !== "ok") throw new Error("USB control transfer failed: " + result.status);
+    }
+    async setSignals(signals){
+      const next = {...this.signals, ...signals};
+      await this.control(0x22, (next.dataTerminalReady ? 1 : 0) | (next.requestToSend ? 2 : 0));
+      this.signals = next;
+    }
+    fail(error){
+      const session = this.session;
+      if(!session || !session.active) return;
+      session.active = false;
+      this.readable = this.writable = null;
+      try{ session.reader.error(error); }catch(_){}
+      try{ session.writer.error(error); }catch(_){}
+    }
+    async open({baudRate}){
+      if(this.device.opened) throw new DOMException("USB device is already open", "InvalidStateError");
+      try{
+        await this.device.open();
+        if(!this.device.configuration) await this.device.selectConfiguration(this.device.configurations[0].configurationValue);
+        const interfaces = this.device.configuration.interfaces;
+        const control = interfaces.find(i => i.alternate.interfaceClass === 2 && i.alternate.interfaceSubclass === 2);
+        const data = interfaces.find(i => i.alternate.interfaceClass === 10);
+        if(!control || !data) throw new Error("This device does not expose a supported USB CDC serial interface.");
+        const input = data.alternate.endpoints.find(e => e.direction === "in" && e.type === "bulk");
+        const output = data.alternate.endpoints.find(e => e.direction === "out" && e.type === "bulk");
+        if(!input || !output) throw new Error("USB serial data endpoints are missing.");
+        this.controlInterface = control.interfaceNumber;
+        await this.device.claimInterface(control.interfaceNumber);
+        await this.device.claimInterface(data.interfaceNumber);
+        const coding = new DataView(new ArrayBuffer(7));
+        coding.setUint32(0, baudRate, true);
+        coding.setUint8(6, 8);
+        await this.control(0x20, 0, coding.buffer);
+        this.signals = {dataTerminalReady: false, requestToSend: false};
+        await this.setSignals({dataTerminalReady: true});
+        const session = this.session = {active: true, cancelled: false};
+        this.readable = new ReadableStream({
+          start: controller => { session.reader = controller; },
+          pull: async controller => {
+            try{
+              const result = await this.device.transferIn(input.endpointNumber, input.packetSize);
+              if(!session.active || session.cancelled) return;
+              if(result.status !== "ok") throw new Error("USB read failed: " + result.status);
+              if(result.data && result.data.byteLength) controller.enqueue(new Uint8Array(result.data.buffer, result.data.byteOffset, result.data.byteLength));
+            }catch(error){ if(session.active && !session.cancelled) this.fail(error); }
+          },
+          cancel: () => { session.cancelled = true; }
+        });
+        this.writable = new WritableStream({
+          start: controller => { session.writer = controller; },
+          write: async chunk => {
+            if(!session.active) throw new Error("USB port is closed");
+            try{
+              const result = await this.device.transferOut(output.endpointNumber, chunk);
+              if(result.status !== "ok" || result.bytesWritten !== chunk.byteLength) throw new Error("USB write was incomplete");
+            }catch(error){ this.fail(error); throw error; }
+          }
+        });
+      }catch(error){
+        try{ await this.device.close(); }catch(_){}
+        throw error;
+      }
+    }
+    async close(){
+      this.fail(new Error("USB port closed"));
+      this.readable = this.writable = null;
+      try{ if(this.device.opened) await this.setSignals({dataTerminalReady: false, requestToSend: false}); }
+      finally{ if(this.device.opened) await this.device.close(); }
+    }
+  }
+  const supported = device => device.configurations.some(c =>
+    c.interfaces.some(i => i.alternate.interfaceClass === 2 && i.alternate.interfaceSubclass === 2));
+  const wrap = device => { if(!ports.has(device)) ports.set(device, new UsbPort(device)); return ports.get(device); };
+  for(const type of ["connect", "disconnect"]) usb.addEventListener(type, event => {
+    if(!supported(event.device)) return;
+    const port = wrap(event.device);
+    if(type === "disconnect"){ port.fail(new Error("USB device disconnected")); ports.delete(event.device); }
+    const forwarded = new Event(type);
+    Object.defineProperty(forwarded, "port", {value: port});
+    events.dispatchEvent(forwarded);
+  });
+  return {
+    addEventListener: (...args) => events.addEventListener(...args),
+    async getPorts(){ return (await usb.getDevices()).filter(supported).map(wrap); },
+    async requestPort(){
+      const device = await usb.requestDevice({filters: [{classCode: 2, subclassCode: 2}]});
+      if(!supported(device)) throw new Error("This device has no USB CDC serial interface.");
+      return wrap(device);
+    }
+  };
+}
+const useWebUsb = (android || !navigator.serial) && !!navigator.usb;
+const SERIAL = useWebUsb ? createUsbSerial(navigator.usb) : (navigator.serial || null);
+const serialOk = !!SERIAL;
 
 const ports = [];
 let port = null, reader = null, writer = null, keepReading = false;
@@ -583,9 +763,22 @@ const VAR = { name: "", re: null, re2: null };   // the variable being logged
 let t0 = null, lastT = null;
 const history = []; let hIdx = -1;
 
-if (!("serial" in navigator)){
-  $("unsupported").style.display = "block";
+if (!serialOk){
+  const u = $("unsupported");
+  u.style.display = "block";
+  u.innerHTML = android
+    ? "This browser can't reach USB devices. Use <b>Chrome</b> on Android, plug the device in with a USB-C OTG cable or adapter, and open "
+      + "<code>" + HOSTED + "</code>."
+    : "This browser has no Web Serial. Use <b>Chrome</b> or <b>Edge</b> (on Ubuntu: Google Chrome from google.com; "
+      + "Snap Chromium needs <code>sudo snap connect chromium:raw-usb</code>; Firefox and Safari can't do it). "
+      + "Or open the hosted copy: <code>" + HOSTED + "</code>.";
   $("btnAdd").disabled = true; $("connBtn").disabled = true;
+}else if (useWebUsb){
+  const n = $("platNote");
+  n.hidden = false;
+  n.innerHTML = "Android: connect with a USB-C OTG cable or adapter. Works with devices that use native USB serial "
+    + "(ESP32-S3/C3/C6, RP2040, Arduino Leonardo/Micro …); boards with a CH340, CP210x or FTDI chip need a computer. "
+    + "Readings record in this browser and download as .csv when you stop.";
 }
 
 /* ---------------- tabs ---------------- */
@@ -629,12 +822,8 @@ const err = m => log(m, "ERR");
 
 
 /* ---------------- device parameters (ported from serial-monitor.html) ----------------
-   Command format is  Set, <name>, <value>  ;  more can be added from the Settings tab. */
-const PARAMS = [
-  { name: "Gain",
-    values: ["0.5x","1x","2x","4x","8x","16x","32x","64x","128x","256x","512x"],
-    def: "16x" }
-];
+   Command format is  Set, <name>, <value>.  The list comes from the device profile (top). */
+const PARAMS = DEVICE.params.map(p => ({ ...p }));
 let headerCols = [];
 const norm = x => String(x).toLowerCase().replace(/[\s_]+/g, "");
 const escP = x => String(x).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -719,7 +908,7 @@ function recordParam(name, rawVal){
   else if (p.pending){ tag.className = "tag pend"; tag.textContent = "waiting for " + p.pending; }
   else if (!sameValue($("pset"+i).value, v)){ tag.className = "tag diff"; tag.textContent = "device value"; }
   else { tag.className = "tag ok"; tag.textContent = "matches"; }
-  const g = $("gainNow"); if (g && norm(p.name) === "gain") g.textContent = v;
+  const now = $("pnow"+i); if (now) now.textContent = v;
   const lr = $("lastReportTs"); if (lr) lr.textContent = "last report " + stamp(p.reportedAt);
   return true;
 }
@@ -900,8 +1089,8 @@ function labelFor(p, i){
     : "Serial port " + (i + 1);
 }
 async function refreshPorts(){
-  if (!("serial" in navigator)) return;
-  let list = await navigator.serial.getPorts();
+  if (!serialOk) return;
+  let list = await SERIAL.getPorts();
   if (!$("optAllPorts").checked) list = list.filter(isUsb);
   ports.length = 0; list.forEach(p => ports.push(p));
   const box = $("portList");
@@ -921,7 +1110,7 @@ $("optAllPorts").onchange = () => refreshPorts();
 $("btnAdd").onclick = async () => {
   try {
     const opts = $("optAllPorts").checked ? {} : { filters: USB_FILTERS };
-    const p = await navigator.serial.requestPort(opts);
+    const p = await SERIAL.requestPort(opts);
     if (!isUsb(p)) $("optAllPorts").checked = true;
     await refreshPorts();
     connectTo(p);
@@ -977,8 +1166,16 @@ async function connectTo(p){
                       parity: "none", flowControl: "none", bufferSize: 4096 });
   } catch(e){
     port = null; setState("off");
+    const busy = /already open|in use|Failed to open/i.test(e.message) || e.name === "InvalidStateError" || e.name === "NetworkError";
     connMsg("Could not open the port: " + e.message +
-      (/already open|in use|Failed to open/i.test(e.message) ? " — close any other serial monitor." : ""));
+      (busy ? " — close any other serial monitor or tab that has it open." : "") +
+      (busy && linuxOs ? "  On Ubuntu the same error also means no permission. Either add a udev rule once "
+        + "(for ESP32 boards: echo 'ATTRS{idVendor}==\"303a\", ENV{ID_MM_DEVICE_IGNORE}=\"1\", TAG+=\"uaccess\"' "
+        + "| sudo tee /etc/udev/rules.d/70-kz-serial.rules, then sudo udevadm control --reload-rules && sudo udevadm trigger), "
+        + "or add yourself to the dialout group (sudo usermod -aG dialout $USER, then log out and in). "
+        + "Right after plugging in, ModemManager may be probing the port for ~15 s: wait and try again. "
+        + "A CH340 board on Ubuntu 22.04+: sudo apt remove brltty." : "") +
+      (useWebUsb ? "  Android: unplug and replug the device, allow the USB permission prompt, and close other apps that use USB." : ""));
     return;
   }
   const info = port.getInfo ? port.getInfo() : {};
@@ -1360,7 +1557,7 @@ function loadCSV(text, name){
   if (xi < 0) xi = find(/elapsed|^t\b|\bsec/i);
   if (xi < 0) xi = 0;
   const numeric = c => CSVD.rows.some(r => isNumStr((r[c] || "").trim()));
-  let yi = cols.findIndex((c, k) => k !== xi && /value|reading|ppm|505|abs|signal|conc/i.test(c) && numeric(k));
+  let yi = cols.findIndex((c, k) => k !== xi && (/value|reading|ppm|abs|signal|conc/i.test(c) || (AUTO_CHANNEL && norm(c).includes(norm(AUTO_CHANNEL)))) && numeric(k));
   if (yi < 0) for (let c = cols.length - 1; c >= 0; c--) if (c !== xi && numeric(c)){ yi = c; break; }
   if (yi < 0) yi = Math.min(xi + 1, cols.length - 1);
   $("colX").value = String(xi); $("colY").value = String(yi);
@@ -1897,10 +2094,43 @@ $("btnTxt").onclick = () => download("serial-raw-"+fileStamp()+".txt",
 
 
 
-/* ---------------- automatic channel ---------------- */
-const AUTO_CHANNEL = "505-525nm";                 // what the sensor prints
+/* ---------------- device profile -> page ---------------- */
+function applyDevice(){
+  $("devName").textContent = DEVICE.name;
+  const other = Object.keys(PROFILES).filter(k => k !== DEVICE_ID);
+  $("devNote").innerHTML = "";
+  $("devNote").append("Chosen with ", Object.assign(document.createElement("code"), {textContent: "?device=" + DEVICE_ID}),
+    " in the address" + (other.length ? "; also available: " : "."));
+  other.forEach((k, n) => {
+    const a = document.createElement("a");
+    a.href = "?device=" + k; a.textContent = k; a.style.color = "var(--accent)";
+    $("devNote").append(a, n < other.length - 1 ? ", " : ".");
+  });
+  $("autoCard").hidden = !AUTO_CHANNEL;
+  $("autoText").textContent = DEVICE.autoText || AUTO_CHANNEL;
+  $("paramCard").hidden = !PARAMS.length;
+  const ex = PARAMS[0] ? PARAMS[0] : null;                 // examples in the help use the first parameter
+  if (ex){
+    const v = ex.def || ex.values[0];
+    const forms = [ex.name + ": " + v, ex.name + " = " + v, "Set, " + ex.name + ", " + v, "Report, " + ex.name + ", " + v];
+    document.querySelectorAll("code.pex").forEach((c, i) => c.textContent = forms[i] || "");
+  }
+  const now = $("paramNow"); now.innerHTML = "";
+  PARAMS.forEach((p, i) => {
+    if (!p.onReading) return;
+    const b = document.createElement("b"); b.id = "pnow"+i; b.textContent = "\u2014";
+    now.append((now.childNodes.length ? "   " : "") + p.name + ": ", b);
+  });
+  now.hidden = !now.childNodes.length;
+  $("curLabel").placeholder = DEVICE.labelHint || "";
+  const baud = $("baud");
+  if (DEVICE.baud && [...baud.options].some(o => o.value == DEVICE.baud)) baud.value = String(DEVICE.baud);
+}
 
-function autoChan(){ return $("optAutoChan").checked; }
+/* ---------------- automatic channel ---------------- */
+const AUTO_CHANNEL = DEVICE.autoVariable;          // from the device profile ("" = none)
+
+function autoChan(){ return !!AUTO_CHANNEL && $("optAutoChan").checked; }
 function applyChanMode(){
   const auto = autoChan();
   try{ localStorage.setItem("kz_serial_autochan", auto ? "1" : "0"); }catch(e){}
@@ -1921,7 +2151,53 @@ try{ $("optAutoChan").checked = localStorage.getItem("kz_serial_autochan") !== "
    Rows are appended to the chosen .csv every 2 s while readings arrive, and
    the file is closed after each write, so an interrupted run is still on disk. */
 let fileHandle = null, lastHandle = null, recCursor = 0, recTimer = null, recName = "", recRows = 0;
-const recSupported = typeof window.showSaveFilePicker === "function";
+// "?opfs" in the address forces the no-picker path (to test the Android behaviour on a computer)
+const recSupported = typeof window.showSaveFilePicker === "function" && !/[?&]opfs\b/.test(location.search);
+/* No file picker (Android Chrome, or a file:// page): record into the browser's private storage (OPFS)
+   instead, or into memory if that isn't available either, and download the .csv when recording stops.
+   OPFS copies stay until deleted (Settings > Recordings kept in this browser), so a crash loses nothing. */
+const recOpfs = !recSupported && !!(navigator.storage && navigator.storage.getDirectory);
+let recInBrowser = false, wakeLock = null;
+async function opfsDir(){
+  const root = await navigator.storage.getDirectory();
+  return root.getDirectoryHandle("recordings", {create: true});
+}
+async function keepAwake(on){
+  try{
+    if (on && !wakeLock && navigator.wakeLock) wakeLock = await navigator.wakeLock.request("screen");
+    if (!on && wakeLock){ await wakeLock.release(); wakeLock = null; }
+  }catch(e){}
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && fileHandle){ wakeLock = null; keepAwake(true); }
+});
+async function listKept(){
+  const card = $("keptCard"), box = $("keptList");
+  if (!recOpfs){ card.hidden = true; return; }
+  let files = [];
+  try{ const d = await opfsDir(); for await (const [name, h] of d.entries()) if (h.kind === "file") files.push(h); }
+  catch(e){ card.hidden = true; return; }
+  files.sort((a, b) => b.name.localeCompare(a.name));
+  card.hidden = !files.length;
+  box.innerHTML = "";
+  for (const h of files){
+    const f = await h.getFile();
+    const row = document.createElement("div"); row.className = "row";
+    const nm = document.createElement("span"); nm.className = "ptime";
+    nm.textContent = h.name + "  (" + (f.size / 1024).toFixed(1) + " kB)";
+    const dl = document.createElement("button"); dl.className = "sm"; dl.textContent = "Download";
+    dl.onclick = async () => download(h.name, await (await h.getFile()).text(), "text/csv");
+    const del = document.createElement("button"); del.className = "sm danger"; del.textContent = "Delete";
+    del.onclick = async () => {
+      if (del.dataset.sure !== "1"){ del.dataset.sure = "1"; del.textContent = "Delete — sure?"; return; }
+      if (fileHandle && fileHandle.name === h.name) return;
+      try{ await (await opfsDir()).removeEntry(h.name); }catch(e){ err("Could not delete " + h.name + ": " + e.message); }
+      listKept();
+    };
+    const right = document.createElement("span"); right.className = "row"; right.append(dl, del);
+    row.append(nm, right); box.appendChild(row);
+  }
+}
 
 function idb(){
   return new Promise((res, rej) => {
@@ -1961,7 +2237,7 @@ function recState(){
   }else{
     pill.hidden = true;
     btn.classList.remove("recording");
-    btn.title = "Record readings to a .csv on disk";
+    btn.title = recSupported ? "Record readings to a .csv on disk" : "Record readings (downloads a .csv when you stop)";
   }
 }
 
@@ -1972,7 +2248,11 @@ async function appendTo(h, text){
   await w.write(text);
   await w.close();
 }
-async function writeChunk(text){ if (fileHandle) await appendTo(fileHandle, text); }
+async function writeChunk(text){
+  if (!fileHandle) return;
+  if (fileHandle.mem){ fileHandle.mem.push(text); return; }       // in-memory fallback
+  await appendTo(fileHandle, text);
+}
 
 /* ---- saved data points: picked once, appended on every Save ---- */
 let curHandle = null, curName = "", curWritten = 0, curSkip = false, curBase = 0;
@@ -1987,8 +2267,8 @@ async function ensureCurFile(){
   if (curSkip) return false;
   if (!recSupported){
     curSkip = true;
-    err("This browser cannot write files directly \u2014 saved points stay in the page; use Download. "
-      + "Chrome and Edge can write, but not from a file:// page.");
+    sys("Saved points stay in the page here; use Download to save them as .csv"
+      + (android ? "." : " (Chrome and Edge on a computer can also write them straight to a file, but not from a file:// page)."));
     return false;
   }
   try{
@@ -2099,13 +2379,30 @@ async function flushToDisk(){
     await stopRecording(true);
   }
 }
-async function startRecording(){
-  if (!recSupported){
-    err("This browser cannot write files directly. Use Chrome or Edge — and not from a file:// page: "
-      + "serve the folder with  python3 -m http.server 8000  and open http://localhost:8000/ (or use https://singaporetech-zhou-kang.github.io/serial-data-logger/)");
-    return;
+async function startRecordingInBrowser(name){
+  recInBrowser = true;
+  try{
+    if (!recOpfs) throw new Error("no OPFS");
+    fileHandle = await (await opfsDir()).getFileHandle(name, {create: true});
+    if (typeof fileHandle.createWritable !== "function") throw new Error("no createWritable");
+    try{ if (navigator.storage.persist) await navigator.storage.persist(); }catch(e){}
+  }catch(e){
+    fileHandle = { name, mem: [] };                       // last resort: keep the rows in memory
   }
+  recName = name; recRows = 0; recCursor = 0; recVar = VAR.name;
+  try{ await writeChunk(csvHeader() + CRLF); }
+  catch(e){ fileHandle = { name, mem: [csvHeader() + CRLF] }; }
+  await flushToDisk();
+  recTimer = setInterval(flushToDisk, 2000);
+  keepAwake(true);
+  recState(); listKept();
+  sys("Recording in this browser (" + (fileHandle.mem ? "memory" : "private storage") + ") — "
+    + name + " downloads when you stop. "
+    + (fileHandle.mem ? "Keep this tab open until then." : "A copy stays under Settings › Recordings kept in this browser."));
+}
+async function startRecording(){
   const suggested = "log-" + slug() + "-" + fileStamp() + ".csv";
+  if (!recSupported) return startRecordingInBrowser(suggested);
   try{
     const opts = {suggestedName: suggested, types:[{description:"CSV file", accept:{"text/csv":[".csv"]}}]};
     if (lastHandle) opts.startIn = lastHandle;
@@ -2144,15 +2441,26 @@ async function startRecording(){
   lastHandle = fileHandle;
   await flushToDisk();                       // readings already taken this session
   recTimer = setInterval(flushToDisk, 2000);
+  keepAwake(true);
   recState();
   sys("Rows are appended every 2 s; labels added after a row is written are not back-filled.");
 }
 async function stopRecording(quiet){
   clearInterval(recTimer); recTimer = null;
   if (fileHandle && !quiet) await flushToDisk();
-  const n = recRows, nm = recName;
-  fileHandle = null;
+  const n = recRows, nm = recName, h = fileHandle, inBrowser = recInBrowser;
+  fileHandle = null; recInBrowser = false;
+  keepAwake(false);
   recState();
+  if (inBrowser && h){
+    try{
+      const text = h.mem ? h.mem.join("") : await (await h.getFile()).text();
+      download(nm, text, "text/csv");
+      sys("Recording stopped — " + n + " rows; " + nm + " downloaded" + (h.mem ? "." : " (a copy stays in this browser)."));
+    }catch(e){ err("Could not download " + nm + ": " + e.message); }
+    listKept();
+    return;
+  }
   if (nm && !quiet) sys("Recording stopped — " + n + " rows written to " + nm + ".");
 }
 $("btnRec").onclick = async () => {
@@ -2178,16 +2486,18 @@ $("btnTheme").onclick = () =>
 setTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light");
 
 /* ---------------- hot-plug ---------------- */
-if ("serial" in navigator){
-  navigator.serial.addEventListener("connect", () => { sys("USB device plugged in."); refreshPorts(); });
-  navigator.serial.addEventListener("disconnect", e => {
-    if (port && e.target === port) closePort("Device unplugged.");
+if (serialOk){
+  SERIAL.addEventListener("connect", () => { sys("USB device plugged in."); refreshPorts(); });
+  SERIAL.addEventListener("disconnect", e => {
+    if (port && (e.port || e.target) === port) closePort("Device unplugged.");
     else refreshPorts();
   });
   refreshPorts();
 }
 window.addEventListener("beforeunload", () => { if (port) closePort(null); });
 
+applyDevice();
+listKept();
 renderCurated();
 updateVarUI();
 $("anaFn").onchange();
