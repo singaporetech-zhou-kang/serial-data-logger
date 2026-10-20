@@ -230,6 +230,12 @@
   .absline{font-family:var(--mono);font-size:clamp(20px,4.5vw,30px);font-weight:700;color:var(--accent2);margin:4px 0 2px}
   .absline small{font-size:12px;font-weight:400;color:var(--dim);margin-left:8px}
   .tag.big{font-size:12.5px;padding:3px 10px;font-weight:600}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:2px;gap:2px;background:var(--panel)}
+  .seg button{border:0;border-radius:999px;padding:5px 13px;background:none;color:var(--dim);font-size:12.5px;min-height:0}
+  .seg button.sel{background:var(--sel-bg);color:var(--accent);font-weight:600}
+  .seg button:hover:not(:disabled){color:var(--accent)}
+  @media (pointer:coarse){ .seg button{min-height:34px} }
+  #blankCard .capval{min-width:110px}
   #calPart .field{min-width:0;max-width:100%}
   #calPart select{max-width:100%;text-overflow:ellipsis}
   #calTbl{width:100%;border-collapse:collapse;font-size:13px}
@@ -336,6 +342,7 @@
   <!-- ============ READING ============ -->
   <section class="tab sel" id="tabReading">
     <div class="card">
+      <div class="row" id="viewRow" style="justify-content:flex-end" hidden><div class="seg" data-seg></div></div>
       <div class="reading">
         <div class="chan" id="chanName">no variable selected</div>
         <div class="big stale" id="bigVal">—</div>
@@ -348,6 +355,18 @@
           <span class="tag big" id="steadyTag" hidden></span>
         </div>
       </div>
+    </div>
+
+    <div class="card" id="blankCard" hidden>
+      <div class="row">
+        <div class="field"><label>Blank (reference, I0)</label><div class="capval none" id="blankVal">not set</div></div>
+        <div class="field" style="flex:1;min-width:180px"><label>&nbsp;</label><span class="dimnote" id="blankMeta"></span></div>
+        <div class="row">
+          <button id="btnBlank" class="primary">Set blank from current reading</button>
+          <button id="btnBlankClear" hidden>Clear</button>
+        </div>
+      </div>
+      <div class="banner" id="blankWarn" hidden style="margin:10px 0 0"></div>
     </div>
 
     <div class="card">
@@ -387,10 +406,7 @@
     <div class="card">
       <div class="row" style="margin-bottom:8px">
         <label style="align-self:center" id="trendTitle">Value vs time</label>
-        <select id="trendY" style="padding:4px 9px;font-size:12px" title="What to plot" hidden>
-          <option value="raw">Reading</option>
-          <option value="abs">Absorbance</option>
-        </select>
+        <div class="seg" data-seg hidden></div>
         <span class="tag big" id="steadyTag2" hidden></span>
         <span style="flex:1"></span>
         <select id="plotMode" style="padding:4px 9px;font-size:12px" title="How to draw the trend">
@@ -450,7 +466,6 @@
             <option value="growth">Growth curve (OD against time)</option>
             <option value="csv">Time series from a .csv file</option>
           </select></div>
-        <div class="field"><label for="calBlank">Blank</label><select id="calBlank"></select></div>
         <div class="field" id="calUnitWrap"><label for="calUnit">Concentration unit</label>
           <input type="text" id="calUnit" style="width:90px"></div>
         <span style="flex:1"></span>
@@ -666,14 +681,20 @@
 
       <h3>3. Measure: blank first, then samples</h3>
       <ol>
-        <li>Put the <b>blank</b> in (medium or water with reagents, no cells or sugar). Wait until the number is steady.</li>
-        <li>Type a label (e.g. <i>Blank</i>) under <b>Saved data points</b> and press <b>Save</b>.
-          The first Save asks where to put the file; every Save after that is written straight away.</li>
-        <li>Do the same for each standard and sample, with a clear label (e.g. <i>Std 0.5 g/L</i>, <i>Culture 2 h</i>).</li>
+        <li>Put the <b>blank</b> in (medium or water with reagents, no cells or sugar). Wait until the reading is <b>Steady</b>.</li>
+        <li>Press <b>Set blank from current reading</b> in the <b>Blank</b> box. That reading becomes the reference
+          <code>I0</code>. It's saved as a "Blank" point, and the page remembers it, with the gain and the time.</li>
+        <li>Put each standard or sample in, wait for Steady, type a clear label (e.g. <i>Std 0.5 g/L</i>, <i>Culture 2 h</i>)
+          and press <b>Save</b>. The first Save asks where to put the file; every Save after that is written straight away.</li>
+        <li>The <b>Intensity / Absorbance</b> switch above the big number (and on Trend) shows absorbance or OD instead of
+          intensity. It only changes the view: files always hold both.</li>
       </ol>
-      <p>Absorbance (or OD) is worked out from the blank reading <code>I0</code> and the sample reading <code>I</code>:</p>
+      <p>Absorbance (or OD) is worked out from the blank <code>I0</code> and the sample reading <code>I</code>:</p>
       <div class="formula">A = log10( I0 / I )</div>
       <p>A sample that lets through half as much light as the blank has A = 0.30.</p>
+      <p><b>Take the blank again</b> when the Blank box warns you: after changing the <b>gain</b>, when the blank is more than
+        30 min old, or when a sample reads higher than the blank (A &lt; 0: wrong blank, bubbles, or a smudged cuvette).
+        Each saved point keeps the blank it was measured against, so re-blanking between sets is safe.</p>
 
       <h3>4. Record a time series (optional)</h3>
       <p>The <b>record button</b> (●, top right) writes every reading to a <code>.csv</code> every 2 s until you
@@ -1213,6 +1234,7 @@ function fmt(v){
 function pushValue(v, t){
   if (t0 === null) t0 = t.getTime();
   const entry = {t, v, label: ""};
+  if (BLANK) entry.I0 = BLANK.v;                      // the blank in force when this reading was taken
   vals.push(entry);
   lastT = t;
   $("capVal").textContent = fmt(v);
@@ -1468,7 +1490,7 @@ function renderCurated(){
     };
     c[2].textContent = stamp(r.t);
     const cA = document.createElement("td"); cA.className = "v"; cA.hidden = !ABS;
-    if (ABS){ const b = blankPoint(); cA.textContent = r === b ? "blank" : fmtA(absOf(r.v)); }
+    if (ABS){ cA.textContent = r.isBlank ? "blank" : fmtA(absPt(r)); cA.title = "I0 = " + fmt(i0Of(r)); }
     c[3].textContent = fmt(r.v); c[3].className = "v";
     c[3].contentEditable = "true"; c[3].title = "Click to edit the value";
     c[3].onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); c[3].blur(); } };
@@ -1500,9 +1522,12 @@ function capture(){
   }
   const entry = vals[vals.length - 1];
   const label = $("curLabel").value.trim() || ("Point " + (curated.length + 1));
+  if (ABS && /^\s*blank\b/i.test(label)){                 // a point labelled "Blank" sets the blank
+    setBlank(label); $("curLabel").value = ""; $("curLabel").focus(); return;
+  }
   entry.label = entry.label ? entry.label + "; " + label : label;
   if (entry.el) entry.el.textContent = entry.label;
-  curated.push({ label, t: entry.t, v: entry.v, entry });
+  curated.push({ label, t: entry.t, v: entry.v, entry, I0: BLANK ? BLANK.v : undefined });
   renderCurated();
   writeCuratedRow(curated[curated.length - 1], curated.length);
   $("curLabel").value = "";
@@ -1694,19 +1719,19 @@ function paintChart(o){
 
 /* ---------------- trend chart (live readings) ---------------- */
 function drawChart(){
-  const asAbs = ABS && $("trendY").value === "abs" && blankPoint();
-  const yOf = v => asAbs ? absOf(v) : v;
-  const use = vals.filter(r => isFinite(yOf(r.v)));
+  const asAbs = ABS && VIEW === "abs" && canAbs();
+  const yOf = r => asAbs ? (r.isBlank ? 0 : absI(r.v, i0Of(r))) : r.v;
+  const use = vals.filter(r => isFinite(yOf(r)));
   $("trendTitle").textContent = (asAbs ? ABS : (VAR.name || "Value")) + " vs time";
   paintChart({
     cv: $("chart"), infoEl: $("trendInfo"),
     modeEl: $("plotMode"), sizeEl: $("ptSize"), axisEl: $("xAxis"),
     xs: use.map(r => (r.t.getTime() - t0) / 1000),
-    ys: use.map(r => yOf(r.v)),
+    ys: use.map(r => yOf(r)),
     base: t0,
-    yTitle: asAbs ? ABS + " (blank " + fmt(blankPoint().v) + ")" : (VAR.name || "Value"),
-    marks: t0 === null ? [] : curated.filter(r => r.t.getTime() >= t0 && isFinite(yOf(r.v)))
-      .map(r => ({ x: (r.t.getTime() - t0) / 1000, y: yOf(r.v), label: r.label })),
+    yTitle: asAbs ? ABS + " = log10(I0 / I)" : (VAR.name || "Value"),
+    marks: t0 === null ? [] : curated.filter(r => r.t.getTime() >= t0 && isFinite(yOf(r)))
+      .map(r => ({ x: (r.t.getTime() - t0) / 1000, y: yOf(r), label: r.label })),
     highlightLast: true,
     count: vals.length + " readings",
     extra: curated.length ? " · " + curated.length + " saved" : "",
@@ -1714,7 +1739,7 @@ function drawChart(){
   });
 }
 $("plotMode").onchange = () => { $("ptSize").disabled = ($("plotMode").value === "line"); drawChart(); };
-$("trendY").onchange = () => { trendYChosen = true; drawChart(); };
+
 $("ptSize").onchange = () => drawChart();
 $("xAxis").onchange = () => drawChart();
 
@@ -2105,7 +2130,7 @@ $("fileIn").onchange = e => { readFile(e.target.files[0]); e.target.value = ""; 
 $("anaUseRun").onclick = () => {
   if (!vals.length){ $("fileInfo").textContent = "no readings in this session yet"; return; }
   const out = [csvHeader()];
-  vals.forEach(r => out.push(csvRow([r.t.toISOString(), ((r.t.getTime()-t0)/1000).toFixed(3), r.v, r.label||""])));
+  vals.forEach(r => out.push(readingRow(r)));
   const t = out.join(CRLF);
   loadCSV(t, "current run");
   cacheCSV(t, "current run");
@@ -2151,17 +2176,31 @@ const csvRow = a => a.map(csvCell).join(",");
 const CRLF = "\r\n";
 const q = csvCell;                       // kept for older call sites
 const valCol = () => VAR.name || "value";           // the variable's own label is the column name
-const csvHeader = () => csvRow(["iso_time", "elapsed_s", valCol(), "label"]);
+// readings: iso_time, elapsed_s, <variable>[, blank_I0, A/OD], label    (A/OD columns only for absorbance profiles)
+const readingCols = () => ABS ? ["iso_time", "elapsed_s", valCol(), "blank_I0", ABS, "label"] : ["iso_time", "elapsed_s", valCol(), "label"];
+const csvHeader = () => csvRow(readingCols());
+const readingRow = r => {
+  const base = [r.t.toISOString(), ((r.t.getTime() - t0) / 1000).toFixed(3), r.v];
+  if (ABS){ const I0 = i0Of(r), A = absI(r.v, I0); base.push(isFinite(I0) ? I0 : "", isFinite(A) ? A.toFixed(4) : ""); }
+  base.push(r.label || "");
+  return csvRow(base);
+};
+// saved points: n, label, iso_time, elapsed_s, <variable>[, blank_I0, A/OD]
+const pointCols = () => ABS ? ["n", "label", "iso_time", "elapsed_s", valCol(), "blank_I0", ABS] : ["n", "label", "iso_time", "elapsed_s", valCol()];
+const pointRow = (r, n, el) => {
+  const base = [n, r.label, r.t.toISOString(), el, r.v];
+  if (ABS){ const I0 = i0Of(r), A = absPt(r); base.push(isFinite(I0) ? I0 : "", isFinite(A) ? A.toFixed(4) : ""); }
+  return csvRow(base);
+};
 const slug = () => (VAR.name || "value").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
 $("btnCsv").onclick = () => {
   const out = [csvHeader()];
-  vals.forEach(r => out.push(csvRow([r.t.toISOString(), ((r.t.getTime()-t0)/1000).toFixed(3), r.v, r.label||""])));
+  vals.forEach(r => out.push(readingRow(r)));
   download("trend-"+slug()+"-"+fileStamp()+".csv", out.join(CRLF)+CRLF, "text/csv");
 };
 $("btnCurCsv").onclick = () => {
-  const out = [csvRow(["n", "label", "iso_time", "elapsed_s", valCol()])];
-  curated.forEach((r,i) => out.push(csvRow([i+1, r.label, r.t.toISOString(),
-    ((r.t.getTime()-t0)/1000).toFixed(3), r.v])));
+  const out = [csvRow(pointCols())];
+  curated.forEach((r,i) => out.push(pointRow(r, i + 1, t0 === null ? "" : ((r.t.getTime()-t0)/1000).toFixed(3))));
   download("saved-points-"+slug()+"-"+fileStamp()+".csv", out.join(CRLF)+CRLF, "text/csv");
 };
 /* ---------------- load a .csv back into the tables ---------------- */
@@ -2172,7 +2211,10 @@ function loadPoints(text, name){
   if (!rws.length){ err("No rows found in " + name + "."); return 0; }
   const head = rws[0].map(x => x.trim().toLowerCase());
   const iN = head.indexOf("n"), iL = head.indexOf("label"), iT = head.indexOf("iso_time");
-  const iV = head.length - 1;                       // value column is named after the variable
+  const iB = head.indexOf("blank_i0");
+  const known = ["n", "label", "iso_time", "elapsed_s", "blank_i0"].concat(ABS ? [ABS.toLowerCase()] : []);
+  let iV = head.findIndex(h => !known.includes(h));   // the value column is named after the variable
+  if (iV < 0) iV = head.length - 1;
   if (iL < 0 || iT < 0){ err(name + " does not look like a saved-points file (needs label and iso_time columns)."); return 0; }
   curated.forEach(r => { if (r.entry){ r.entry.label = ""; if (r.entry.el) r.entry.el.textContent = ""; } });
   curated.length = 0;
@@ -2180,9 +2222,19 @@ function loadPoints(text, name){
   rws.slice(1).forEach(r => {
     const t = new Date(Date.parse(r[iT])), v = parseFloat(r[iV]);
     if (!isFinite(t.getTime()) || !isFinite(v)) return;
-    curated.push({ label: r[iL] || ("Point " + (curated.length + 1)), t, v });
+    const pt = { label: r[iL] || ("Point " + (curated.length + 1)), t, v };
+    const I0 = iB >= 0 ? parseFloat(r[iB]) : NaN;
+    if (I0 > 0) pt.I0 = I0;
+    if (ABS && /^\s*blank\b/i.test(pt.label) && (iB < 0 || !(I0 > 0) || Math.abs(I0 - v) < 1e-9)) pt.isBlank = true;
+    curated.push(pt);
     n++;
   });
+  if (ABS && iB < 0){                               // older files: the blank is only a label; each point uses the blank before it
+    let I0 = NaN;
+    curated.forEach(pt => { if (pt.isBlank) I0 = pt.v; if (I0 > 0) pt.I0 = I0; });
+    const first = curated.find(pt => pt.isBlank);
+    if (first) curated.forEach(pt => { if (!(pt.I0 > 0)) pt.I0 = first.v; });
+  }
   curBase = Math.max(curBase, iN >= 0
     ? rws.slice(1).reduce((m, r) => Math.max(m, parseInt(r[iN], 10) || 0), 0) : n);
   if (typeof loadCalState === "function" && ABS) loadCalState();   // concentrations / dilutions typed earlier
@@ -2196,7 +2248,8 @@ function loadReadings(text, name){
   if (!rws.length){ err("No rows found in " + name + "."); return 0; }
   const head = rws[0].map(x => x.trim().toLowerCase());
   const iT = head.indexOf("iso_time"), iL = head.indexOf("label");
-  const iV = head.findIndex((h, i) => i !== iT && i !== iL && h !== "elapsed_s");
+  const iB = head.indexOf("blank_i0");
+  const iV = head.findIndex((h, i) => i !== iT && i !== iL && h !== "elapsed_s" && h !== "blank_i0" && (!ABS || h !== ABS.toLowerCase()));
   if (iT < 0 || iV < 0){ err(name + " does not look like a readings file (needs iso_time and a value column)."); return 0; }
   if (!VAR.name && rws[0][iV]) setVariable(rws[0][iV].trim());
   clearReadings();
@@ -2206,7 +2259,10 @@ function loadReadings(text, name){
     if (!isFinite(t.getTime()) || !isFinite(v)) return;
     pushValue(v, t);
     const lab = iL >= 0 ? (r[iL] || "") : "";
-    if (lab){ const e = vals[vals.length - 1]; e.label = lab; if (e.el) e.el.textContent = lab; }
+    const e = vals[vals.length - 1];
+    const I0 = iB >= 0 ? parseFloat(r[iB]) : NaN;
+    if (I0 > 0) e.I0 = I0; else delete e.I0;
+    if (lab){ e.label = lab; if (e.el) e.el.textContent = lab; }
     n++;
   });
   recCursor = vals.length;                          // loaded rows are already on disk somewhere
@@ -2299,30 +2355,134 @@ $("btnTxt").onclick = () => download("serial-raw-"+fileStamp()+".txt",
 
 
 
-/* ---------------- blank, absorbance / OD, steadiness (issue #2) ----------------
-   A (or OD) = log10(I0 / I): I0 is the blank's reading, I the sample's. The blank is the latest saved
-   point whose label contains "blank", unless one is picked in Analysis.                          */
+/* ---------------- blank (reference), absorbance / OD, steadiness (issues #2, #3) ----------------
+   A (or OD) = log10(I0 / I). I0 is the blank, set in the Blank box on Reading (or by saving a point
+   labelled "Blank") and kept across reloads. Every reading and saved point keeps the I0 that was current
+   when it was taken, so re-blanking between sets leaves earlier results alone; points saved before any
+   blank use the current one. The Intensity / Absorbance switch changes the view only, never the data.  */
 const ABS = DEVICE.absName || "";
-let blankRef = null;                                     // picked by hand in Analysis; null = automatic
-let trendYChosen = false;                                // the user picked Reading / A on Trend
-function blankPoint(){
-  if (!ABS) return null;
-  if (blankRef && curated.includes(blankRef)) return blankRef;
-  for (let i = curated.length - 1; i >= 0; i--) if (/blank/i.test(curated[i].label)) return curated[i];
-  return null;
-}
-function absOf(v){
-  const b = blankPoint();
-  return (b && b.v > 0 && v > 0) ? Math.log10(b.v / v) : NaN;
-}
+const BLANK_KEY = "kz_serial_blank_" + DEVICE_ID;
+const BLANK_OLD_MIN = 30;
+let BLANK = null;                                        // { v, t: Date, gain }
+let VIEW = "int";                                        // big number and Trend: "int" | "abs"
+try{ const o = JSON.parse(localStorage.getItem(BLANK_KEY) || "null");
+     if (o && o.v > 0) BLANK = { v: o.v, t: new Date(o.t), gain: o.gain || "" }; }catch(e){}
+try{ if (localStorage.getItem("kz_serial_view") === "abs") VIEW = "abs"; }catch(e){}
+const i0Of = r => (r && r.I0 > 0) ? r.I0 : (BLANK ? BLANK.v : NaN);
+const absI = (v, I0) => (I0 > 0 && v > 0) ? Math.log10(I0 / v) : NaN;
+const absPt = r => r.isBlank ? 0 : absI(r.v, i0Of(r));
 const fmtA = a => isFinite(a) ? a.toFixed(3) : "—";
-function updateAbsNow(){
-  const el = $("absNow"), b = blankPoint();
-  if (!ABS || !b || !vals.length){ el.hidden = true; return; }
-  el.hidden = false; el.innerHTML = "";
-  el.append(ABS + " " + fmtA(absOf(vals[vals.length - 1].v)));
-  el.appendChild(Object.assign(document.createElement("small"), { textContent: "blank “" + b.label + "” = " + fmt(b.v) }));
+function currentGain(){
+  const i = paramByName("gain"); if (i < 0) return "";
+  const p = PARAMS[i], el = $("pset" + i);
+  return String(p.reported || (el ? el.value : "") || "");
 }
+function gainMatches(){
+  if (!BLANK || !BLANK.gain) return true;
+  const g = currentGain();
+  return !g || sameValue(g, BLANK.gain) || sameValue(BLANK.gain, g);
+}
+const canAbs = () => !!ABS && (!!BLANK || vals.some(r => r.I0 > 0));
+function setBlank(label){
+  if (!ABS || !vals.length) return;
+  const last = vals[vals.length - 1], st = steadiness();
+  BLANK = { v: last.v, t: new Date(), gain: currentGain() };
+  try{ localStorage.setItem(BLANK_KEY, JSON.stringify({ v: BLANK.v, t: BLANK.t.toISOString(), gain: BLANK.gain })); }catch(e){}
+  last.I0 = BLANK.v;
+  // readings and points taken before any blank use this first one from now on (a later re-blank won't change them)
+  vals.forEach(r => { if (!(r.I0 > 0)) r.I0 = BLANK.v; });
+  curated.forEach(r => { if (!(r.I0 > 0)) r.I0 = BLANK.v; });
+  label = label || "Blank";
+  last.label = last.label ? last.label + "; " + label : label;
+  if (last.el) last.el.textContent = last.label;
+  const r = { label, t: last.t, v: last.v, entry: last, I0: BLANK.v, isBlank: true };
+  curated.push(r);
+  renderCurated();
+  writeCuratedRow(r, curated.length);
+  sys("Blank set: I0 = " + fmt(BLANK.v) + (BLANK.gain ? " at gain " + BLANK.gain : "")
+    + (st === "settling" ? " — the reading was still settling; take it again once it's steady." : "."));
+  updateViewUI(); updateBlankBox();
+}
+function clearBlank(){
+  BLANK = null;
+  try{ localStorage.removeItem(BLANK_KEY); }catch(e){}
+  renderCurated(); updateViewUI(); updateBlankBox();
+  sys("Blank cleared. Saved points keep the blank they were measured against.");
+}
+function updateBlankBox(){
+  const card = $("blankCard");
+  if (!ABS){ card.hidden = true; return; }
+  card.hidden = false;
+  const has = !!BLANK, fresh = !!(lastT && port && (Date.now() - lastT.getTime()) / 1000 < 10);
+  $("blankVal").textContent = has ? fmt(BLANK.v) : "not set";
+  $("blankVal").className = has ? "capval" : "capval none";
+  const sameDay = has && BLANK.t.toDateString() === new Date().toDateString();
+  $("blankMeta").textContent = has
+    ? "taken " + BLANK.t.toLocaleTimeString([], {hour12: false}) + (sameDay ? "" : " on " + BLANK.t.toLocaleDateString())
+      + (BLANK.gain ? " · gain " + BLANK.gain : "") + " · " + ABS + " = log10(I0 / I)"
+    : "Put the blank in, wait until the reading is Steady, then set it.";
+  const bb = $("btnBlank");
+  bb.disabled = !fresh;
+  bb.textContent = has ? "Take blank again" : "Set blank from current reading";
+  bb.title = fresh ? (steadiness() === "steady" ? "Use the current reading as I0" : "The reading is still settling") : "Connect and wait for readings";
+  $("btnBlankClear").hidden = !has;
+  const w = [];
+  if (has && !gainMatches())
+    w.push("The gain is now " + currentGain() + " but the blank was taken at " + BLANK.gain + ": take the blank again.");
+  const age = has ? (Date.now() - BLANK.t.getTime()) / 60000 : 0;
+  if (age > BLANK_OLD_MIN)
+    w.push("The blank is " + (age < 120 ? Math.round(age) + " min" : (age / 60).toFixed(1) + " h") + " old: take it again if the light may have drifted.");
+  if (has && fresh && vals.length && vals[vals.length - 1].v > BLANK.v * 1.01)
+    w.push("The reading is higher than the blank (" + ABS + " < 0): check the blank, and the cuvette for bubbles or smudges.");
+  $("blankWarn").hidden = !w.length;
+  $("blankWarn").textContent = w.join("  ");
+}
+function setView(v){
+  VIEW = v;
+  try{ localStorage.setItem("kz_serial_view", v); }catch(e){}
+  updateViewUI();
+  if ($("tabTrend").classList.contains("sel")) drawChart();
+}
+function updateViewUI(){
+  const ok = canAbs();
+  if (VIEW === "abs" && !ok) VIEW = "int";
+  document.querySelectorAll("[data-seg]").forEach(seg => {
+    seg.hidden = !ABS;
+    if (!seg.childElementCount) ["int", "abs"].forEach(v => {
+      const bt = document.createElement("button"); bt.dataset.v = v; bt.onclick = () => setView(v); seg.appendChild(bt);
+    });
+    const [bi, ba] = seg.children;
+    bi.textContent = "Intensity"; ba.textContent = ABS || "A";
+    ba.disabled = !ok;
+    ba.title = ok ? "Show " + ABS + " = log10(I0 / I) instead of the intensity" : "Set a blank first";
+    bi.classList.toggle("sel", VIEW === "int"); ba.classList.toggle("sel", VIEW === "abs");
+  });
+  $("viewRow").hidden = !ABS;
+  updateAbsNow();
+}
+function updateAbsNow(){
+  const el = $("absNow");
+  if (!ABS || !vals.length){ el.hidden = true; return; }
+  const last = vals[vals.length - 1], I0 = i0Of(last), A = absI(last.v, I0);
+  if (!(I0 > 0)){
+    el.hidden = true; $("bigVal").textContent = fmt(last.v);
+    if (VAR.name) $("chanName").textContent = VAR.name;
+    return;
+  }
+  el.hidden = false; el.innerHTML = "";
+  if (VIEW === "abs"){
+    $("bigVal").textContent = fmtA(A);
+    $("chanName").textContent = ABS + "  ·  " + (VAR.name || "");
+    el.append("Intensity " + fmt(last.v));
+  } else {
+    $("bigVal").textContent = fmt(last.v);
+    $("chanName").textContent = VAR.name || "";
+    el.append(ABS + " " + fmtA(A));
+  }
+  el.appendChild(Object.assign(document.createElement("small"), { textContent: "blank I0 = " + fmt(I0) }));
+}
+$("btnBlank").onclick = () => setBlank();
+$("btnBlankClear").onclick = () => clearBlank();
 /* steady = the last few seconds of readings stay within 1 % (about 0.004 in A) */
 const STEADY_S = 8;
 function steadiness(){
@@ -2336,6 +2496,7 @@ function steadiness(){
 }
 function showSteady(){
   const st = steadiness();
+  updateBlankBox();
   ["steadyTag", "steadyTag2"].forEach(id => {
     const t = $(id);
     t.hidden = !st;
@@ -2346,17 +2507,9 @@ function showSteady(){
   });
 }
 function afterPointsChange(){
-  const has = !!(ABS && blankPoint());
   $("curAbsHead").hidden = !ABS;
   $("curAbsHead").textContent = ABS || "A";
-  if (ABS){
-    $("trendY").hidden = false;
-    $("trendY").options[1].textContent = ABS + (has ? "" : " (save a blank first)");
-    $("trendY").options[1].disabled = !has;
-    if (has && !trendYChosen) $("trendY").value = "abs";
-    if (!has) $("trendY").value = "raw";
-  }
-  updateAbsNow();
+  updateViewUI();
   if ($("tabTrend").classList.contains("sel")) drawChart();
   if ($("tabAnalysis").classList.contains("sel")) renderCal();
   saveCalState();
@@ -2376,7 +2529,7 @@ function saveCalState(){
   try{
     const m = (JSON.parse(localStorage.getItem(CAL_KEY) || "{}").m) || {};   // keep entries of points not loaded now
     curated.forEach(r => { if (r.conc !== undefined || r.dil !== undefined || r.fit === false) m[calKey(r)] = { c: r.conc, d: r.dil, f: r.fit }; });
-    localStorage.setItem(CAL_KEY, JSON.stringify({ m, unit: $("calUnit").value, blank: blankRef ? calKey(blankRef) : "" }));
+    localStorage.setItem(CAL_KEY, JSON.stringify({ m, unit: $("calUnit").value }));
   }catch(e){}
 }
 function loadCalState(){
@@ -2384,19 +2537,18 @@ function loadCalState(){
     const o = JSON.parse(localStorage.getItem(CAL_KEY) || "{}");
     curated.forEach(r => { const v = (o.m || {})[calKey(r)]; if (v){ r.conc = v.c; r.dil = v.d; if (v.f === false) r.fit = false; } });
     if (o.unit) $("calUnit").value = o.unit;
-    if (o.blank){ const b = curated.find(r => calKey(r) === o.blank); if (b) blankRef = b; }
   }catch(e){}
 }
 const numOr = (x, d) => { const v = parseFloat(String(x === undefined ? "" : x).replace(",", ".")); return isFinite(v) ? v : d; };
 let CAL = null;                                          // the last computed table + fit, for drawing and download
 
 function calRows(){
-  const b = blankPoint(), mode = $("calMode").value;
-  const firstT = (curated.find(r => r !== b) || {}).t;
+  const mode = $("calMode").value;
+  const firstT = (curated.find(r => !r.isBlank) || {}).t;
   return curated.map((r, i) => {
-    const isBlank = r === b, A = isBlank ? 0 : absOf(r.v), dil = numOr(r.dil, 1);
+    const isBlank = !!r.isBlank, A = absPt(r), dil = numOr(r.dil, 1), I0 = i0Of(r);
     const conc = numOr(r.conc, NaN);
-    const row = { i, r, isBlank, A, dil, conc, std: !isBlank && isFinite(conc) };
+    const row = { i, r, isBlank, A, dil, conc, I0, std: !isBlank && isFinite(conc) };
     row.hours = firstT ? (r.t.getTime() - firstT.getTime()) / 3600000 : 0;
     row.odc = isFinite(A) ? A * dil : NaN;
     row.fit = !isBlank && r.fit !== false && (mode === "cal" ? row.std && isFinite(A) : isFinite(row.odc) && row.odc > 0);
@@ -2444,16 +2596,11 @@ function renderCal(){
   $("calPart").hidden = !on || $("calMode").value === "csv";
   $("csvPart").hidden = on && $("calMode").value !== "csv";
   if (!on || $("calMode").value === "csv") return;
-  const mode = $("calMode").value, b = blankPoint();
-  // blank picker
-  const sel = $("calBlank"); sel.innerHTML = "";
-  sel.appendChild(new Option("automatic (label contains “blank”)", ""));
-  curated.forEach((r, i) => sel.appendChild(new Option((i + 1) + ". " + r.label + " (" + fmt(r.v) + ")", String(i))));
-  sel.value = blankRef && curated.includes(blankRef) ? String(curated.indexOf(blankRef)) : "";
+  const mode = $("calMode").value, b = curated.some(r => i0Of(r) > 0);
   $("calUnitWrap").hidden = mode !== "cal";
   const hint = $("calHint");
   if (!curated.length) hint.textContent = "Save some points on Reading first: the blank, then the standards or samples, each with a label.";
-  else if (!b) hint.textContent = "No blank yet: save a point labelled “Blank”, or pick one above.";
+  else if (!b) hint.textContent = "No blank yet: set it in the Blank box on Reading. Each point uses the blank that was set when it was saved.";
   else hint.textContent = mode === "cal"
     ? "Type the concentration of each standard. Points without a concentration are samples: their concentration comes from the fit (× dilution)."
     : "OD × dilution against time since the first measured point. Untick points to leave them out of the growth-rate fit (e.g. lag or stationary phase).";
@@ -2461,8 +2608,8 @@ function renderCal(){
   // table
   const th = $("calTbl").tHead, tb = $("calTbl").tBodies[0];
   const cols = mode === "cal"
-    ? ["#", "Label", "Reading", ABS, "Standard (" + (CAL.unit) + ")", "Dilution ×", "Fit", "Result (" + CAL.unit + ")"]
-    : ["#", "Label", "Time (h)", "Reading", ABS, "Dilution ×", ABS + " × dil.", "Fit"];
+    ? ["#", "Label", "Reading", "Blank I0", ABS, "Standard (" + (CAL.unit) + ")", "Dilution \u00d7", "Fit", "Result (" + CAL.unit + ")"]
+    : ["#", "Label", "Time (h)", "Reading", "Blank I0", ABS, "Dilution \u00d7", ABS + " \u00d7 dil.", "Fit"];
   th.innerHTML = "<tr>" + cols.map(c => "<th></th>").join("") + "</tr>";
   [...th.rows[0].cells].forEach((c, i) => c.textContent = cols[i]);
   tb.innerHTML = "";
@@ -2476,13 +2623,14 @@ function renderCal(){
       if (t instanceof Node) c.appendChild(t); else c.textContent = t; tr.appendChild(c); return c; };
     td(String(row.i + 1), "n"); td(r.label + (row.isBlank ? "  (blank)" : ""));
     if (mode === "cal"){
-      td(fmt(r.v), "n"); td(row.isBlank ? "0 (blank)" : fmtA(row.A), "n");
+      td(fmt(r.v), "n"); td(isFinite(row.I0) ? fmt(row.I0) : "\u2014", "n"); td(row.isBlank ? "0 (blank)" : fmtA(row.A), "n");
       td(row.isBlank ? "" : inp(r.conc, v => { r.conc = v; refreshCal(); }));
       td(row.isBlank ? "" : inp(r.dil, v => { r.dil = v; refreshCal(); }));
       td(chk(row));
       td(row.isBlank ? "" : (row.std ? "standard" : (isFinite(row.pred) ? fmt(row.pred) : "—")), row.std ? "" : "n res");
     } else {
       td(row.isBlank ? "" : row.hours.toFixed(2), "n"); td(fmt(r.v), "n");
+      td(isFinite(row.I0) ? fmt(row.I0) : "\u2014", "n");
       td(row.isBlank ? "0 (blank)" : fmtA(row.A), "n");
       td(row.isBlank ? "" : inp(r.dil, v => { r.dil = v; refreshCal(); }));
       td(row.isBlank ? "" : fmtA(row.odc), "n res"); td(chk(row));
@@ -2502,10 +2650,10 @@ function refreshCal(){                                   // typing: recompute re
       const last = tr.cells[tr.cells.length - 1], mode = CAL.mode;
       if (mode === "cal"){
         if (!row.isBlank){ last.textContent = row.std ? "standard" : (isFinite(row.pred) ? fmt(row.pred) : "—"); last.className = row.std ? "" : "n res"; }
-        const cb = tr.cells[6].querySelector("input"); if (cb && !row.isBlank) cb.checked = row.fit;
+        const cb = tr.cells[7].querySelector("input"); if (cb && !row.isBlank) cb.checked = row.fit;
       } else if (!row.isBlank){
-        tr.cells[6].textContent = fmtA(row.odc);
-        const cb = tr.cells[7].querySelector("input"); if (cb) cb.checked = row.fit;
+        tr.cells[7].textContent = fmtA(row.odc);
+        const cb = tr.cells[8].querySelector("input"); if (cb) cb.checked = row.fit;
       }
     });
     drawCal();
@@ -2550,24 +2698,22 @@ function drawCal(){
 }
 $("calMode").onchange = () => { try{ localStorage.setItem("kz_serial_calmode_" + DEVICE_ID, $("calMode").value); }catch(e){}
   renderCal(); if ($("calMode").value === "csv") drawAnalysis(); };
-$("calBlank").onchange = () => { const v = $("calBlank").value; blankRef = v === "" ? null : curated[Number(v)]; renderCurated(); };
 $("calUnit").oninput = () => { refreshCal(); saveCalState();
   const th = $("calTbl").tHead; if (th && th.rows[0] && CAL && CAL.mode === "cal"){
-    const u = $("calUnit").value.trim() || "units"; th.rows[0].cells[4].textContent = "Standard (" + u + ")"; th.rows[0].cells[7].textContent = "Result (" + u + ")"; } };
+    const u = $("calUnit").value.trim() || "units"; th.rows[0].cells[5].textContent = "Standard (" + u + ")"; th.rows[0].cells[8].textContent = "Result (" + u + ")"; } };
 $("calCsv").onclick = () => {
   if (!CAL) CAL = computeCal();
   const u = CAL.unit, cal = CAL.mode === "cal";
-  const head = cal ? ["n", "label", "iso_time", "reading", ABS, "standard_" + u, "dilution", "in_fit", "result_" + u]
-                   : ["n", "label", "iso_time", "time_h", "reading", ABS, "dilution", ABS + "_x_dilution", "in_fit"];
+  const head = cal ? ["n", "label", "iso_time", "reading", "blank_I0", ABS, "standard_" + u, "dilution", "in_fit", "result_" + u]
+                   : ["n", "label", "iso_time", "time_h", "reading", "blank_I0", ABS, "dilution", ABS + "_x_dilution", "in_fit"];
   const lines = [csvRow(head)];
   CAL.rows.forEach(x => lines.push(csvRow(cal
-    ? [x.i + 1, x.r.label, x.r.t.toISOString(), x.r.v, x.isBlank ? "blank" : (isFinite(x.A) ? x.A.toFixed(4) : ""),
+    ? [x.i + 1, x.r.label, x.r.t.toISOString(), x.r.v, isFinite(x.I0) ? x.I0 : "", x.isBlank ? "blank" : (isFinite(x.A) ? x.A.toFixed(4) : ""),
        x.std ? x.conc : "", x.isBlank ? "" : x.dil, x.fit ? "yes" : "", x.std ? "" : (isFinite(x.pred) ? x.pred.toPrecision(5) : "")]
-    : [x.i + 1, x.r.label, x.r.t.toISOString(), x.isBlank ? "" : x.hours.toFixed(4), x.r.v, x.isBlank ? "blank" : (isFinite(x.A) ? x.A.toFixed(4) : ""),
+    : [x.i + 1, x.r.label, x.r.t.toISOString(), x.isBlank ? "" : x.hours.toFixed(4), x.r.v, isFinite(x.I0) ? x.I0 : "", x.isBlank ? "blank" : (isFinite(x.A) ? x.A.toFixed(4) : ""),
        x.isBlank ? "" : x.dil, isFinite(x.odc) && !x.isBlank ? x.odc.toFixed(4) : "", x.fit ? "yes" : ""])));
   lines.push("");
   CAL.stats.forEach(([k, v]) => lines.push(csvRow([k, v])));
-  const b = blankPoint(); if (b) lines.push(csvRow(["blank", b.label + " = " + b.v]));
   download((cal ? "calibration-" : "growth-") + DEVICE_ID + "-" + fileStamp() + ".csv", lines.join(CRLF) + CRLF, "text/csv");
 };
 function initCal(){
@@ -2766,7 +2912,7 @@ async function writeChunk(text){
 
 /* ---- saved data points: picked once, appended on every Save ---- */
 let curHandle = null, curName = "", curWritten = 0, curSkip = false, curBase = 0;
-const curHeader = () => csvRow(["n", "label", "iso_time", "elapsed_s", valCol()]);
+const curHeader = () => csvRow(pointCols());
 function curState(){
   $("curFileState").textContent = curHandle
     ? "writing to " + curName + " (" + curWritten + " saved)"
@@ -2805,7 +2951,7 @@ async function ensureCurFile(){
       const text = await f.text();
       const rws = parseCSV(text);
       const head = (rws[0] || []).map(x => x.trim());
-      const ours = ["n", "label", "iso_time", "elapsed_s", valCol()];
+      const ours = pointCols();
       const same = head.length === ours.length && head.every((h, i) => h.toLowerCase() === ours[i].toLowerCase());
       curBase = 0;
       rws.slice(1).forEach(r => { const n = parseInt(r[0], 10); if (isFinite(n) && n > curBase) curBase = n; });
@@ -2849,7 +2995,7 @@ async function rewritePoints(){
   try{
     const w = await curHandle.createWritable();        // full rewrite: edits change rows already written
     await w.write([curHeader()].concat(curated.map((r, i) =>
-      csvRow([i + 1, r.label, r.t.toISOString(), elapsedOf(r.t), r.v]))).join(CRLF) + CRLF);
+      pointRow(r, i + 1, elapsedOf(r.t)))).join(CRLF) + CRLF);
     await w.close();
     curWritten = curated.length; curBase = curated.length;
     curState();
@@ -2860,8 +3006,7 @@ async function rewritePoints(){
 async function writeCuratedRow(r, n){
   if (!await ensureCurFile()) return;
   try{
-    await appendTo(curHandle, csvRow([curBase + n, r.label, r.t.toISOString(),
-      elapsedOf(r.t), r.v]) + CRLF);
+    await appendTo(curHandle, pointRow(r, curBase + n, elapsedOf(r.t)) + CRLF);
     curWritten++;
     curState();
   }catch(e){
@@ -2877,8 +3022,7 @@ async function flushToDisk(){
       + " keeps the column name “" + (recVar || "value") + "”. Stop and start recording for a clean file.");
     recVar = VAR.name;
   }
-  const text = batch.map(r => csvRow([r.t.toISOString(), ((r.t.getTime()-t0)/1000).toFixed(3),
-    r.v, r.label || ""])).join(CRLF) + CRLF;
+  const text = batch.map(readingRow).join(CRLF) + CRLF;
   try{
     await writeChunk(text);
     recCursor = vals.length;
@@ -2933,7 +3077,7 @@ async function startRecording(){
     if (f.size > 0){
       const text = await f.text();
       const head = (parseCSV(text)[0] || []).map(x => x.trim());
-      const ours = [ "iso_time", "elapsed_s", valCol(), "label" ];
+      const ours = readingCols();
       const same = head.length === ours.length && head.every((h,i) => h.toLowerCase() === ours[i].toLowerCase());
       if (same) sys("Appending to existing file " + recName + ".");
       else sys("Appending to " + recName + " — its header is [" + head.join(" | ")
@@ -3010,6 +3154,7 @@ applyDevice();
 listKept();
 renderCurated();
 initCal();
+updateViewUI(); updateBlankBox();
 updateVarUI();
 $("anaFn").onchange();
 buildQuick();

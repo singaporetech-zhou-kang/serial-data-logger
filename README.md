@@ -7,6 +7,7 @@ A single-page browser app that reads a sensor over USB serial and logs it to a C
 ## What it does
 - **Connect** to a USB serial device from the browser.
 - **Reading:** pick the variable of interest from the incoming lines and watch its latest value.
+- **Blank and absorbance** (AS7341 profiles): a **Blank** box holds the reference I0 (*Set blank from current reading*: value, time and gain; kept across reloads). An **Intensity ⇄ A515 / OD600** switch shows A = log10(I0 / I) for the big number and Trend; it changes the view only. Each reading and saved point keeps the blank it was measured against: re-blanking between sets leaves earlier results alone, and points taken before the first blank use that first blank. Warnings: gain changed since the blank, blank older than 30 min, reading above the blank (A < 0). A point saved with the label "Blank" also sets the blank.
 - **Trend:** live plot. Once a blank is saved it shows absorbance / OD, with the saved points marked, and a **Steady** tag says when the reading has settled (last 8 s within 1 %).
 - **Analysis**, on the saved points:
   - **Calibration curve** (DNS assay): standards' concentrations typed in; fits C = k × A through the origin (as Excel's `LINEST(C, A, FALSE)`), reports k and R², and gives each sample's concentration × its dilution.
@@ -16,6 +17,11 @@ A single-page browser app that reads a sensor over USB serial and logs it to a C
 - **Record:** stream rows to a `.csv`. The file is written every 2 s, so an interrupted run is still saved.
 - **Settings:** the device profile, and device parameters sent as `Set, <name>, <value>`; values the device reports back are shown next to them.
 - **Console:** raw serial lines and quick commands.
+
+## Files
+- Saved points: `n, label, iso_time, elapsed_s, <channel>, blank_I0, <A515 | OD600>`.
+- Recordings and downloaded readings: `iso_time, elapsed_s, <channel>, blank_I0, <A515 | OD600>, label`.
+- The blank and absorbance columns only appear for the AS7341 profiles. Older files, where the blank is only a point labelled "Blank", still load: each point uses the blank before it.
 
 ## Device profiles
 The lab spectrophotometer is an **AS7341** 11-channel spectral sensor. Its firmware prints one line per channel (`405-425nm: 1234` … `670-690nm: …`, `Clear: …`, `NIR: …`).
