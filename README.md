@@ -8,7 +8,7 @@ A single-page browser app that reads a sensor over USB serial and logs it to a C
 - **Connect** to a USB serial device from the browser (Web Serial).
 - **Reading:** pick the variable of interest from the incoming lines and watch its latest value.
 - **Trend:** live plot.
-- **Analysis:** plot and fit the logged data.
+- **Analysis:** load a CSV and plot it, with summary statistics, a linear fit or a moving average.
 - **Record:** stream rows straight to a `.csv` on your disk. The file is written every 2 s, so an interrupted run is still saved.
 - **Settings:** device parameters, sent as `Set, <name>, <value>` lines; values the device reports back are shown next to them.
 - **Console:** raw serial lines and quick commands.
