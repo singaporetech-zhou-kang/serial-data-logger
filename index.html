@@ -130,7 +130,7 @@
   .lbl{color:var(--tx)}
   button.del{padding:1px 7px;font-size:12px;color:var(--dim);border-color:transparent;background:none}
   button.del:hover{color:var(--err);border-color:var(--err)}
-  #chart,#anaChart{width:100%;display:block}
+  #chart,#anaChart,#calChart{width:100%;display:block}
   [hidden]{display:none!important}
 
   .ptime{font-family:var(--mono);font-size:11.5px;color:var(--dim)}
@@ -227,6 +227,23 @@
   }
   .reclist{display:flex;flex-direction:column;gap:6px;margin-top:8px}
   .proftag{font-weight:600;color:var(--accent);border-color:var(--sel-line);background:var(--sel-bg)}
+  .absline{font-family:var(--mono);font-size:clamp(20px,4.5vw,30px);font-weight:700;color:var(--accent2);margin:4px 0 2px}
+  .absline small{font-size:12px;font-weight:400;color:var(--dim);margin-left:8px}
+  .tag.big{font-size:12.5px;padding:3px 10px;font-weight:600}
+  #calPart .field{min-width:0;max-width:100%}
+  #calPart select{max-width:100%;text-overflow:ellipsis}
+  #calTbl{width:100%;border-collapse:collapse;font-size:13px}
+  #calTbl th{text-align:left;font-size:11px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.05em;
+    padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+  #calTbl td{padding:5px 8px;border-bottom:1px solid var(--line2);white-space:nowrap}
+  #calTbl td.n{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  #calTbl tr.blank td{color:var(--dim)}
+  #calTbl input[type=text]{width:84px;padding:4px 8px;min-height:0}
+  #calTbl .res{font-weight:700;color:var(--accent)}
+  .feedback{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .feedback a{display:inline-block;text-decoration:none;font-size:13px;border-radius:999px;border:1px solid var(--line);
+    padding:6px 14px;color:var(--txt);background:var(--panel)}
+  .feedback a:hover{border-color:var(--accent);color:var(--accent)}
   .proftag:empty{display:none}
   #tabHelp h2{font-size:16px;margin:2px 0 8px}
   #tabHelp h3{font-size:14px;margin:14px 0 4px;color:var(--accent)}
@@ -322,11 +339,13 @@
       <div class="reading">
         <div class="chan" id="chanName">no variable selected</div>
         <div class="big stale" id="bigVal">—</div>
+        <div class="absline" id="absNow" hidden></div>
         <div class="tstamp" id="bigTs">pick a variable of interest, top left</div>
         <div class="meta">
           <span>Readings: <b id="nVals">0</b></span>
           <span>Last: <b id="ago">—</b></span>
           <span id="paramNow" hidden></span>
+          <span class="tag big" id="steadyTag" hidden></span>
         </div>
       </div>
     </div>
@@ -356,7 +375,7 @@
         <table>
           <thead><tr><th style="width:8%">#</th><th style="width:34%">Label</th>
             <th style="width:26%">Timestamp</th>
-            <th style="width:26%" id="curValHead">Value</th><th style="width:6%"></th></tr></thead>
+            <th style="width:20%" id="curValHead">Value</th><th style="width:12%" id="curAbsHead" hidden>A</th><th style="width:6%"></th></tr></thead>
           <tbody id="curBody"></tbody>
         </table>
       </div>
@@ -368,6 +387,11 @@
     <div class="card">
       <div class="row" style="margin-bottom:8px">
         <label style="align-self:center" id="trendTitle">Value vs time</label>
+        <select id="trendY" style="padding:4px 9px;font-size:12px" title="What to plot" hidden>
+          <option value="raw">Reading</option>
+          <option value="abs">Absorbance</option>
+        </select>
+        <span class="tag big" id="steadyTag2" hidden></span>
         <span style="flex:1"></span>
         <select id="plotMode" style="padding:4px 9px;font-size:12px" title="How to draw the trend">
           <option value="line" selected>Line</option>
@@ -417,6 +441,32 @@
 
   <!-- ============ ANALYSIS ============ -->
   <section class="tab" id="tabAnalysis">
+    <div id="calPart" hidden>
+    <div class="card">
+      <div class="row">
+        <div class="field"><label for="calMode">Analysis</label>
+          <select id="calMode">
+            <option value="cal">Calibration curve (concentration from absorbance)</option>
+            <option value="growth">Growth curve (OD against time)</option>
+            <option value="csv">Time series from a .csv file</option>
+          </select></div>
+        <div class="field"><label for="calBlank">Blank</label><select id="calBlank"></select></div>
+        <div class="field" id="calUnitWrap"><label for="calUnit">Concentration unit</label>
+          <input type="text" id="calUnit" style="width:90px"></div>
+        <span style="flex:1"></span>
+        <button id="calCsv">Download table</button>
+      </div>
+      <div class="dimnote" id="calHint" style="margin-top:8px"></div>
+      <div style="overflow-x:auto;margin-top:10px"><table id="calTbl"><thead></thead><tbody></tbody></table></div>
+    </div>
+    <div class="card">
+      <div class="row" style="margin-bottom:8px"><label style="align-self:center" id="calTitle"></label>
+        <span style="flex:1"></span><span class="ptime" id="calInfo"></span></div>
+      <canvas id="calChart"></canvas>
+      <div class="statgrid" id="calOut" style="margin-top:10px"></div>
+    </div>
+    </div>
+    <div id="csvPart">
     <div class="card">
       <div class="row">
         <button id="btnLoad" class="primary">Load CSV…</button>
@@ -487,6 +537,7 @@
         <span class="dimnote" id="anaNote"></span>
       </div>
       <div class="statgrid" id="anaOut"></div>
+    </div>
     </div>
   </section>
 
@@ -631,10 +682,20 @@
 
       <h3>5. The other tabs</h3>
       <ul>
-        <li><b>Trend</b>: a live plot of the readings since you connected. Use it to see when a reading has settled
-          before you press Save, or to watch a slow change.</li>
-        <li><b>Analysis</b>: load a <code>.csv</code> (or <b>Use current run</b>), choose the X and Y columns, and get
-          summary statistics, a linear fit or a moving average.</li>
+        <li><b>Trend</b>: a live plot since you connected. Once a blank is saved it shows absorbance / OD, with your
+          saved points marked. The <b>Steady</b> tag (also on Reading) turns green when the last 8 s stay within 1 %:
+          that's the moment to press Save.</li>
+        <li><b>Analysis</b> works on your saved points:
+          <ul>
+            <li><b>Calibration curve</b> (DNS assay): type each standard's concentration. The page fits
+              <i>C = k × A</i> through the origin (the same as Excel's <code>LINEST(C, A, FALSE)</code>), shows k and R²,
+              and gives every sample's concentration (× its dilution).</li>
+            <li><b>Growth curve</b> (OD600): OD × dilution against time, with the growth rate μ and the doubling time.
+              Untick the lag or stationary points to leave them out of the fit.</li>
+            <li><b>Download table</b> gives the whole table and the fit, ready for your report.</li>
+            <li><b>Time series from a .csv file</b> keeps the older tools: any column against any other,
+              summary statistics, a linear fit, a moving average.</li>
+          </ul></li>
         <li><b>Settings</b>: what you're measuring, automatic channel, and the gain.</li>
         <li><b>Console</b>: the raw lines from the device, and a box to send commands.</li>
       </ul>
@@ -653,6 +714,13 @@
         <li><b>No number appears</b>: open <b>Console</b> to check lines arrive, and check <b>Settings</b> shows the right measurement.</li>
         <li><b>Saved points didn't go to a file</b>: use <b>Download</b> next to the saved points.</li>
       </ul>
+      <h3>Feedback</h3>
+      <p>Found a problem, or have an idea? Tell us on GitHub (free account needed). The link fills in your browser and settings.
+        No account? Tell your lab instructor or TA.</p>
+      <div class="feedback">
+        <a data-feedback="bug.yml" href="https://github.com/singaporetech-zhou-kang/serial-data-logger/issues/new">Something went wrong</a>
+        <a data-feedback="suggestion.yml" href="https://github.com/singaporetech-zhou-kang/serial-data-logger/issues/new">Suggest an idea</a>
+      </div>
       <p class="dimnote" style="margin-top:12px">Made by the Zhou Kang Lab, Singapore Institute of Technology. MIT License.
         Source code: <a style="color:var(--accent)" href="https://github.com/singaporetech-zhou-kang/serial-data-logger" target="_blank" rel="noopener">github.com/singaporetech-zhou-kang/serial-data-logger</a></p>
     </div>
@@ -661,6 +729,7 @@
 <footer class="credits">
   Developed by the <a href="https://singaporetech-zhou-kang.github.io/zhou-group-public-site/" target="_blank" rel="noopener">Zhou Kang Lab</a>, Singapore Institute of Technology.<br>
   &copy; 2026 Singapore Institute of Technology &middot; <a href="https://github.com/singaporetech-zhou-kang/serial-data-logger/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a> &middot; <a href="https://github.com/singaporetech-zhou-kang/serial-data-logger" target="_blank" rel="noopener">Source code on GitHub</a>
+  &middot; <a data-feedback="bug.yml" href="https://github.com/singaporetech-zhou-kang/serial-data-logger/issues/new">Send feedback</a>
 </footer>
 </div>
 
@@ -684,6 +753,10 @@ const $ = id => document.getElementById(id);
    autoText      how that channel is described to the user
    params        device parameters for the Settings table, sent as  Set, <name>, <value>.
                  onReading: also show the latest reported value under the big reading.
+   absName       name of log10(blank / reading) for this measurement ("OD600", "A515"); "" = none
+   analysis      what the Analysis tab opens with: "growth" (OD vs time), "cal" (calibration), "csv"
+   concUnit      default concentration unit for the calibration curve
+   steadyFloor   smallest change (in reading units) still counted as "steady"
    labelHint     placeholder for the label of a saved data point
    baud          default baud rate                                                      */
 const AS7341_GAIN = { name: "Gain",                  // AS7341 analogue gain, set with  Set, Gain, <value>
@@ -695,6 +768,7 @@ const PROFILES = {
     autoVariable: "580-600nm",
     autoText: "the 580\u2013600 nm channel (closest to 600 nm)",
     params: [ { ...AS7341_GAIN } ],
+    absName: "OD600", analysis: "growth", steadyFloor: 2,
     labelHint: "e.g. Blank (medium), Culture 0 h, Culture 2 h",
     baud: 115200
   },
@@ -704,7 +778,8 @@ const PROFILES = {
     autoVariable: "505-525nm",
     autoText: "the 505\u2013525 nm channel",
     params: [ { ...AS7341_GAIN } ],
-    labelHint: "e.g. Blank, Standard 0.5 g/L, Sample A",
+    absName: "A515", analysis: "cal", concUnit: "g/L", steadyFloor: 2,
+    labelHint: "e.g. Blank, Std 0.5 g/L, Sample A",
     baud: 115200
   },
   generic: {
@@ -724,6 +799,8 @@ const DEVICE_ID = (() => {
   return PROFILES[q] ? q : "od600";
 })();
 const DEVICE = PROFILES[DEVICE_ID];
+const APP_VERSION = "2026-10-20b";
+const REPO = "https://github.com/singaporetech-zhou-kang/serial-data-logger";
 /* ==================================================================== */
 
 /* USB-serial vendor IDs — keeps Bluetooth / debug-console ports out of the picker */
@@ -886,7 +963,7 @@ function showTab(name){
   });
   if (name === "Console") $("cmd").focus();
   if (name === "Trend") drawChart();
-  if (name === "Analysis") drawAnalysis();
+  if (name === "Analysis"){ drawAnalysis(); renderCal(); }
 }
 TABS.forEach(t => $("tab"+t+"Btn").onclick = () => showTab(t));
 
@@ -1145,6 +1222,7 @@ function pushValue(v, t){
   $("bigTs").textContent = t.toLocaleTimeString([], {hour12:false}) + "." + pad(t.getMilliseconds(),3)
                           + "  ·  " + t.toLocaleDateString();
   $("nVals").textContent = vals.length;
+  updateAbsNow();
   $("btnCsvTop").disabled = false;
   const tb = $("histBody");
   const tr = document.createElement("tr");
@@ -1160,6 +1238,7 @@ function pushValue(v, t){
   if ($("tabTrend").classList.contains("sel")) drawChart();
 }
 setInterval(() => {
+  showSteady();
   if (!lastT){ $("ago").textContent = "—"; return; }
   const s = (Date.now() - lastT.getTime()) / 1000;
   $("ago").textContent = s < 1 ? "just now" : s.toFixed(0) + " s ago";
@@ -1388,6 +1467,8 @@ function renderCurated(){
       pointsEdited();
     };
     c[2].textContent = stamp(r.t);
+    const cA = document.createElement("td"); cA.className = "v"; cA.hidden = !ABS;
+    if (ABS){ const b = blankPoint(); cA.textContent = r === b ? "blank" : fmtA(absOf(r.v)); }
     c[3].textContent = fmt(r.v); c[3].className = "v";
     c[3].contentEditable = "true"; c[3].title = "Click to edit the value";
     c[3].onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); c[3].blur(); } };
@@ -1407,9 +1488,10 @@ function renderCurated(){
                         pointsEdited();
 renderCurated(); if ($("tabTrend").classList.contains("sel")) drawChart(); };
     c[4].appendChild(b);
-    tr.append(...c);
+    tr.append(c[0], c[1], c[2], c[3], cA, c[4]);
     tb.insertBefore(tr, tb.firstChild);
   });
+  afterPointsChange();
 }
 function capture(){
   if (!vals.length){
@@ -1473,9 +1555,13 @@ function paintChart(o){
       : "Time (" + (xu === "min" ? "min" : xu === "h" ? "h" : "s") + ")")
     : o.xLabel);
 
-  const x0 = xs[0], xe = xs[xs.length-1];
+  let x0 = xs[0], xe = xs[xs.length-1];
+  if (o.xMin !== undefined) x0 = Math.min(x0, o.xMin);
+  if (o.xMax !== undefined) xe = Math.max(xe, o.xMax);
   const x1 = (xe === x0) ? x0 + 1 : xe;
   let y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
+  (o.points2 || []).forEach(P2 => P2.ys.forEach(v => { if (isFinite(v)){ if (v < y0) y0 = v; if (v > y1) y1 = v; } }));
+  if (o.yMin !== undefined) y0 = Math.min(y0, o.yMin);
   (o.lines || []).forEach(L => L.ys.forEach(v => {
     if (isFinite(v)){ if (v < y0) y0 = v; if (v > y1) y1 = v; }
   }));
@@ -1537,7 +1623,7 @@ function paintChart(o){
   ctx.font = font;
 
   // the series
-  const mode = o.modeEl ? o.modeEl.value : "line";
+  const mode = o.mode || (o.modeEl ? o.modeEl.value : "line");
   if (mode !== "scatter"){
     ctx.strokeStyle = CSSV("--accent"); ctx.lineWidth = 1.6; ctx.beginPath();
     xs.forEach((_, i) => { const x = X(xs[i]), y = Y(ys[i]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
@@ -1561,6 +1647,20 @@ function paintChart(o){
     ctx.beginPath();
     L.xs.forEach((xv, i) => { const x = X(xv), y = Y(L.ys[i]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
     ctx.stroke();
+    ctx.restore();
+  });
+
+  // a second set of points (samples on a calibration curve): hollow circles with labels
+  (o.points2 || []).forEach(P2 => {
+    ctx.save(); ctx.strokeStyle = P2.color || CSSV("--tx"); ctx.fillStyle = P2.color || CSSV("--tx"); ctx.lineWidth = 1.6;
+    ctx.textBaseline = "bottom"; ctx.font = font;
+    P2.xs.forEach((xv, i) => {
+      if (!isFinite(xv) || !isFinite(P2.ys[i])) return;
+      const x = X(xv), y = Y(P2.ys[i]);
+      ctx.beginPath(); ctx.arc(x, y, 4.2, 0, 6.284); ctx.stroke();
+      const lab = (P2.labels && P2.labels[i]) || "";
+      if (lab){ ctx.textAlign = x > w - P.r - 60 ? "right" : "left"; ctx.fillText(lab.length > 16 ? lab.slice(0,15) + "\u2026" : lab, x + (ctx.textAlign === "left" ? 6 : -6), y - 4); }
+    });
     ctx.restore();
   });
 
@@ -1594,14 +1694,19 @@ function paintChart(o){
 
 /* ---------------- trend chart (live readings) ---------------- */
 function drawChart(){
+  const asAbs = ABS && $("trendY").value === "abs" && blankPoint();
+  const yOf = v => asAbs ? absOf(v) : v;
+  const use = vals.filter(r => isFinite(yOf(r.v)));
+  $("trendTitle").textContent = (asAbs ? ABS : (VAR.name || "Value")) + " vs time";
   paintChart({
     cv: $("chart"), infoEl: $("trendInfo"),
     modeEl: $("plotMode"), sizeEl: $("ptSize"), axisEl: $("xAxis"),
-    xs: vals.map(r => (r.t.getTime() - t0) / 1000),
-    ys: vals.map(r => r.v),
+    xs: use.map(r => (r.t.getTime() - t0) / 1000),
+    ys: use.map(r => yOf(r.v)),
     base: t0,
-    yTitle: VAR.name || "Value",
-    marks: curated.map(r => ({ x: (r.t.getTime() - t0) / 1000, y: r.v, label: r.label })),
+    yTitle: asAbs ? ABS + " (blank " + fmt(blankPoint().v) + ")" : (VAR.name || "Value"),
+    marks: t0 === null ? [] : curated.filter(r => r.t.getTime() >= t0 && isFinite(yOf(r.v)))
+      .map(r => ({ x: (r.t.getTime() - t0) / 1000, y: yOf(r.v), label: r.label })),
     highlightLast: true,
     count: vals.length + " readings",
     extra: curated.length ? " · " + curated.length + " saved" : "",
@@ -1609,6 +1714,7 @@ function drawChart(){
   });
 }
 $("plotMode").onchange = () => { $("ptSize").disabled = ($("plotMode").value === "line"); drawChart(); };
+$("trendY").onchange = () => { trendYChosen = true; drawChart(); };
 $("ptSize").onchange = () => drawChart();
 $("xAxis").onchange = () => drawChart();
 
@@ -2021,7 +2127,7 @@ window.addEventListener("resize", () => {
   clearTimeout(resizeT);
   resizeT = setTimeout(() => {
     if ($("tabTrend").classList.contains("sel")) drawChart();
-    if ($("tabAnalysis").classList.contains("sel")) drawAnalysis();
+    if ($("tabAnalysis").classList.contains("sel")){ drawAnalysis(); drawCal(); }
   }, 150);
 });
 
@@ -2079,6 +2185,7 @@ function loadPoints(text, name){
   });
   curBase = Math.max(curBase, iN >= 0
     ? rws.slice(1).reduce((m, r) => Math.max(m, parseInt(r[iN], 10) || 0), 0) : n);
+  if (typeof loadCalState === "function" && ABS) loadCalState();   // concentrations / dilutions typed earlier
   renderCurated();
   if ($("tabTrend").classList.contains("sel")) drawChart();
   sys("Loaded " + n + " saved point(s) from " + name + ".");
@@ -2190,6 +2297,309 @@ $("btnTxt").onclick = () => download("serial-raw-"+fileStamp()+".txt",
   rows.map(r => stamp(r.t)+"\t"+r.dir+"\t"+r.text).join("\n"), "text/plain");
 
 
+
+
+/* ---------------- blank, absorbance / OD, steadiness (issue #2) ----------------
+   A (or OD) = log10(I0 / I): I0 is the blank's reading, I the sample's. The blank is the latest saved
+   point whose label contains "blank", unless one is picked in Analysis.                          */
+const ABS = DEVICE.absName || "";
+let blankRef = null;                                     // picked by hand in Analysis; null = automatic
+let trendYChosen = false;                                // the user picked Reading / A on Trend
+function blankPoint(){
+  if (!ABS) return null;
+  if (blankRef && curated.includes(blankRef)) return blankRef;
+  for (let i = curated.length - 1; i >= 0; i--) if (/blank/i.test(curated[i].label)) return curated[i];
+  return null;
+}
+function absOf(v){
+  const b = blankPoint();
+  return (b && b.v > 0 && v > 0) ? Math.log10(b.v / v) : NaN;
+}
+const fmtA = a => isFinite(a) ? a.toFixed(3) : "—";
+function updateAbsNow(){
+  const el = $("absNow"), b = blankPoint();
+  if (!ABS || !b || !vals.length){ el.hidden = true; return; }
+  el.hidden = false; el.innerHTML = "";
+  el.append(ABS + " " + fmtA(absOf(vals[vals.length - 1].v)));
+  el.appendChild(Object.assign(document.createElement("small"), { textContent: "blank “" + b.label + "” = " + fmt(b.v) }));
+}
+/* steady = the last few seconds of readings stay within 1 % (about 0.004 in A) */
+const STEADY_S = 8;
+function steadiness(){
+  if (!lastT || !port || (Date.now() - lastT.getTime()) / 1000 > 10) return null;
+  const end = lastT.getTime(), win = [];
+  for (let i = vals.length - 1; i >= 0 && end - vals[i].t.getTime() <= STEADY_S * 1000; i--) win.push(vals[i].v);
+  if (win.length < 3) return "wait";
+  const hi = Math.max.apply(null, win), lo = Math.min.apply(null, win);
+  const tol = Math.max(Math.abs(mean(win)) * 0.01, DEVICE.steadyFloor || 0);
+  return (hi - lo) <= tol ? "steady" : "settling";
+}
+function showSteady(){
+  const st = steadiness();
+  ["steadyTag", "steadyTag2"].forEach(id => {
+    const t = $(id);
+    t.hidden = !st;
+    if (!st) return;
+    t.className = "tag big " + (st === "steady" ? "ok" : "pend");
+    t.textContent = st === "steady" ? "● Steady — ready to save" : st === "wait" ? "Waiting for readings…" : "Settling…";
+    t.title = "Steady when the last " + STEADY_S + " s of readings stay within 1 %";
+  });
+}
+function afterPointsChange(){
+  const has = !!(ABS && blankPoint());
+  $("curAbsHead").hidden = !ABS;
+  $("curAbsHead").textContent = ABS || "A";
+  if (ABS){
+    $("trendY").hidden = false;
+    $("trendY").options[1].textContent = ABS + (has ? "" : " (save a blank first)");
+    $("trendY").options[1].disabled = !has;
+    if (has && !trendYChosen) $("trendY").value = "abs";
+    if (!has) $("trendY").value = "raw";
+  }
+  updateAbsNow();
+  if ($("tabTrend").classList.contains("sel")) drawChart();
+  if ($("tabAnalysis").classList.contains("sel")) renderCal();
+  saveCalState();
+}
+
+/* ---------------- Analysis: calibration curve and growth curve from the saved points (issue #1) ----------------
+   Calibration (e.g. DNS assay): standards have a concentration; fit  C = k · A  through the origin, as the
+   lab manual's LINEST(C, A, FALSE); R² as Excel reports it for a zero intercept (1 − SSres / ΣC²).
+   Samples: C = k · A × dilution.
+   Growth (OD600): OD × dilution against time since the first measured point; ln(OD) = ln(OD0) + μ t
+   fitted over the ticked points gives the growth rate μ and the doubling time ln 2 / μ.           */
+const CAL_KEY = "kz_serial_cal";
+const calKey = r => r.t.toISOString() + "|" + r.label;
+let calReady = false;                                    // nothing is saved before the stored state is read
+function saveCalState(){
+  if (!calReady) return;
+  try{
+    const m = (JSON.parse(localStorage.getItem(CAL_KEY) || "{}").m) || {};   // keep entries of points not loaded now
+    curated.forEach(r => { if (r.conc !== undefined || r.dil !== undefined || r.fit === false) m[calKey(r)] = { c: r.conc, d: r.dil, f: r.fit }; });
+    localStorage.setItem(CAL_KEY, JSON.stringify({ m, unit: $("calUnit").value, blank: blankRef ? calKey(blankRef) : "" }));
+  }catch(e){}
+}
+function loadCalState(){
+  try{
+    const o = JSON.parse(localStorage.getItem(CAL_KEY) || "{}");
+    curated.forEach(r => { const v = (o.m || {})[calKey(r)]; if (v){ r.conc = v.c; r.dil = v.d; if (v.f === false) r.fit = false; } });
+    if (o.unit) $("calUnit").value = o.unit;
+    if (o.blank){ const b = curated.find(r => calKey(r) === o.blank); if (b) blankRef = b; }
+  }catch(e){}
+}
+const numOr = (x, d) => { const v = parseFloat(String(x === undefined ? "" : x).replace(",", ".")); return isFinite(v) ? v : d; };
+let CAL = null;                                          // the last computed table + fit, for drawing and download
+
+function calRows(){
+  const b = blankPoint(), mode = $("calMode").value;
+  const firstT = (curated.find(r => r !== b) || {}).t;
+  return curated.map((r, i) => {
+    const isBlank = r === b, A = isBlank ? 0 : absOf(r.v), dil = numOr(r.dil, 1);
+    const conc = numOr(r.conc, NaN);
+    const row = { i, r, isBlank, A, dil, conc, std: !isBlank && isFinite(conc) };
+    row.hours = firstT ? (r.t.getTime() - firstT.getTime()) / 3600000 : 0;
+    row.odc = isFinite(A) ? A * dil : NaN;
+    row.fit = !isBlank && r.fit !== false && (mode === "cal" ? row.std && isFinite(A) : isFinite(row.odc) && row.odc > 0);
+    return row;
+  });
+}
+function computeCal(){
+  const mode = $("calMode").value, rows = calRows(), unit = $("calUnit").value.trim() || "units";
+  const res = { mode, rows, unit, stats: [], ok: false };
+  const f = rows.filter(x => x.fit);
+  if (mode === "cal"){
+    const sAC = f.reduce((s, x) => s + x.A * x.conc, 0), sAA = f.reduce((s, x) => s + x.A * x.A, 0);
+    const sCC = f.reduce((s, x) => s + x.conc * x.conc, 0);
+    if (f.length >= 2 && sAA > 0){
+      const k = sAC / sAA;
+      const ssr = f.reduce((s, x) => s + (x.conc - k * x.A) ** 2, 0);
+      res.k = k; res.r2 = sCC ? 1 - ssr / sCC : NaN; res.ok = true;
+      rows.forEach(x => { if (!x.isBlank && isFinite(x.A)) x.pred = k * x.A * x.dil; });
+      res.stats = [["slope k", fmt(k) + " " + unit + " per A"], ["equation", "C = " + fmt(k) + " × A"],
+                   ["R² (through origin)", isFinite(res.r2) ? res.r2.toFixed(4) : "—"],
+                   ["standards in fit", String(f.length)],
+                   ["A range of standards", fmtA(Math.min(...f.map(x => x.A))) + " – " + fmtA(Math.max(...f.map(x => x.A)))]];
+    }
+  } else {
+    if (f.length >= 2){
+      const xs = f.map(x => x.hours), ys = f.map(x => Math.log(x.odc));
+      const mx = mean(xs), my = mean(ys);
+      let sxy = 0, sxx = 0, syy = 0;
+      xs.forEach((x, i) => { sxy += (x - mx) * (ys[i] - my); sxx += (x - mx) ** 2; syy += (ys[i] - my) ** 2; });
+      if (sxx > 0){
+        const mu = sxy / sxx, b = my - mu * mx;
+        res.mu = mu; res.lnod0 = b; res.r2 = syy ? sxy * sxy / (sxx * syy) : NaN; res.ok = true;
+        res.stats = [["growth rate μ", fmt(mu) + " per h"],
+                     ["doubling time", mu > 0 ? fmt(Math.LN2 / mu) + " h (" + fmt(60 * Math.LN2 / mu) + " min)" : "— (not growing)"],
+                     ["R² of ln(OD) fit", isFinite(res.r2) ? res.r2.toFixed(4) : "—"],
+                     ["points in fit", String(f.length)],
+                     ["time span", fmt(Math.max(...xs) - Math.min(...xs)) + " h"]];
+      }
+    }
+  }
+  return res;
+}
+function renderCal(){
+  const on = !!ABS;
+  $("calPart").hidden = !on || $("calMode").value === "csv";
+  $("csvPart").hidden = on && $("calMode").value !== "csv";
+  if (!on || $("calMode").value === "csv") return;
+  const mode = $("calMode").value, b = blankPoint();
+  // blank picker
+  const sel = $("calBlank"); sel.innerHTML = "";
+  sel.appendChild(new Option("automatic (label contains “blank”)", ""));
+  curated.forEach((r, i) => sel.appendChild(new Option((i + 1) + ". " + r.label + " (" + fmt(r.v) + ")", String(i))));
+  sel.value = blankRef && curated.includes(blankRef) ? String(curated.indexOf(blankRef)) : "";
+  $("calUnitWrap").hidden = mode !== "cal";
+  const hint = $("calHint");
+  if (!curated.length) hint.textContent = "Save some points on Reading first: the blank, then the standards or samples, each with a label.";
+  else if (!b) hint.textContent = "No blank yet: save a point labelled “Blank”, or pick one above.";
+  else hint.textContent = mode === "cal"
+    ? "Type the concentration of each standard. Points without a concentration are samples: their concentration comes from the fit (× dilution)."
+    : "OD × dilution against time since the first measured point. Untick points to leave them out of the growth-rate fit (e.g. lag or stationary phase).";
+  CAL = computeCal();
+  // table
+  const th = $("calTbl").tHead, tb = $("calTbl").tBodies[0];
+  const cols = mode === "cal"
+    ? ["#", "Label", "Reading", ABS, "Standard (" + (CAL.unit) + ")", "Dilution ×", "Fit", "Result (" + CAL.unit + ")"]
+    : ["#", "Label", "Time (h)", "Reading", ABS, "Dilution ×", ABS + " × dil.", "Fit"];
+  th.innerHTML = "<tr>" + cols.map(c => "<th></th>").join("") + "</tr>";
+  [...th.rows[0].cells].forEach((c, i) => c.textContent = cols[i]);
+  tb.innerHTML = "";
+  const inp = (val, on) => { const x = document.createElement("input"); x.type = "text"; x.inputMode = "decimal";
+    x.value = val === undefined ? "" : val; x.oninput = () => on(x.value); x.onchange = () => { saveCalState(); }; return x; };
+  const chk = (row) => { const x = document.createElement("input"); x.type = "checkbox"; x.checked = row.fit;
+    x.disabled = row.isBlank; x.onchange = () => { row.r.fit = x.checked; saveCalState(); refreshCal(); }; return x; };
+  CAL.rows.forEach(row => {
+    const r = row.r, tr = document.createElement("tr"); if (row.isBlank) tr.className = "blank";
+    const td = (t, cls) => { const c = document.createElement("td"); if (cls) c.className = cls;
+      if (t instanceof Node) c.appendChild(t); else c.textContent = t; tr.appendChild(c); return c; };
+    td(String(row.i + 1), "n"); td(r.label + (row.isBlank ? "  (blank)" : ""));
+    if (mode === "cal"){
+      td(fmt(r.v), "n"); td(row.isBlank ? "0 (blank)" : fmtA(row.A), "n");
+      td(row.isBlank ? "" : inp(r.conc, v => { r.conc = v; refreshCal(); }));
+      td(row.isBlank ? "" : inp(r.dil, v => { r.dil = v; refreshCal(); }));
+      td(chk(row));
+      td(row.isBlank ? "" : (row.std ? "standard" : (isFinite(row.pred) ? fmt(row.pred) : "—")), row.std ? "" : "n res");
+    } else {
+      td(row.isBlank ? "" : row.hours.toFixed(2), "n"); td(fmt(r.v), "n");
+      td(row.isBlank ? "0 (blank)" : fmtA(row.A), "n");
+      td(row.isBlank ? "" : inp(r.dil, v => { r.dil = v; refreshCal(); }));
+      td(row.isBlank ? "" : fmtA(row.odc), "n res"); td(chk(row));
+    }
+    tb.appendChild(tr);
+  });
+  drawCal();
+}
+let calT = null;
+function refreshCal(){                                   // typing: recompute results and the plot, keep the inputs
+  clearTimeout(calT);
+  calT = setTimeout(() => {
+    CAL = computeCal();
+    const tb = $("calTbl").tBodies[0];
+    CAL.rows.forEach((row, n) => {
+      const tr = tb.rows[n]; if (!tr) return;
+      const last = tr.cells[tr.cells.length - 1], mode = CAL.mode;
+      if (mode === "cal"){
+        if (!row.isBlank){ last.textContent = row.std ? "standard" : (isFinite(row.pred) ? fmt(row.pred) : "—"); last.className = row.std ? "" : "n res"; }
+        const cb = tr.cells[6].querySelector("input"); if (cb && !row.isBlank) cb.checked = row.fit;
+      } else if (!row.isBlank){
+        tr.cells[6].textContent = fmtA(row.odc);
+        const cb = tr.cells[7].querySelector("input"); if (cb) cb.checked = row.fit;
+      }
+    });
+    drawCal();
+  }, 120);
+}
+function drawCal(){
+  if (!CAL || $("calPart").hidden) return;
+  const out = $("calOut"); out.innerHTML = "";
+  (CAL.stats.length ? CAL.stats : [["fit", CAL.mode === "cal" ? "needs 2 or more standards with a concentration" : "needs 2 or more points with OD > 0"]])
+    .forEach(([k, v]) => { const d = document.createElement("div"); d.className = "stat";
+      d.innerHTML = '<div class="k"></div><div class="v"></div>'; d.children[0].textContent = k; d.children[1].textContent = v; out.appendChild(d); });
+  if (CAL.mode === "cal"){
+    const st = CAL.rows.filter(x => x.std && isFinite(x.A)).sort((a, b) => a.A - b.A);
+    const sm = CAL.rows.filter(x => !x.isBlank && !x.std && isFinite(x.pred));
+    const aMax = Math.max(0, ...st.map(x => x.A), ...sm.map(x => x.A));
+    $("calTitle").textContent = "Calibration curve: concentration against " + ABS;
+    paintChart({ cv: $("calChart"), infoEl: $("calInfo"), mode: "scatter",
+      xs: st.map(x => x.A), ys: st.map(x => x.conc), xLabel: ABS, xTitle: ABS, yTitle: "Concentration (" + CAL.unit + ")",
+      xMin: 0, xMax: aMax, yMin: 0,
+      lines: CAL.ok ? [{ xs: [0, aMax], ys: [0, CAL.k * aMax], color: CSSV("--warn"), dash: [6, 4] }] : [],
+      points2: sm.length ? [{ xs: sm.map(x => x.A), ys: sm.map(x => x.pred / x.dil), labels: sm.map(x => x.r.label) }] : [],
+      count: st.length + " standards" + (sm.length ? " · " + sm.length + " samples (○, before dilution)" : ""),
+      empty: "type the concentrations of 2 or more standards", emptyOne: "one standard so far — add another" });
+  } else {
+    const pts = CAL.rows.filter(x => !x.isBlank && isFinite(x.odc)).sort((a, b) => a.hours - b.hours);
+    const out2 = pts.filter(x => !x.fit);
+    $("calTitle").textContent = "Growth curve: " + ABS + " × dilution against time";
+    let lines = [];
+    if (CAL.ok && pts.length){
+      const t0h = pts[0].hours, t1h = pts[pts.length - 1].hours, n = 40;
+      const xs = Array.from({ length: n + 1 }, (_, i) => t0h + (t1h - t0h) * i / n);
+      lines = [{ xs, ys: xs.map(t => Math.exp(CAL.lnod0 + CAL.mu * t)), color: CSSV("--warn"), dash: [6, 4] }];
+    }
+    const used = pts.filter(x => x.fit);
+    paintChart({ cv: $("calChart"), infoEl: $("calInfo"), mode: "both",
+      xs: used.map(x => x.hours), ys: used.map(x => x.odc), xLabel: "h", xTitle: "Time since first point (h)",
+      yTitle: ABS + " × dilution", lines, yMin: 0,
+      xMin: pts.length ? pts[0].hours : undefined, xMax: pts.length ? pts[pts.length - 1].hours : undefined,
+      points2: out2.length ? [{ xs: out2.map(x => x.hours), ys: out2.map(x => x.odc), labels: out2.map(x => x.r.label + " (not in fit)") }] : [],
+      count: used.length + " points in fit", empty: "save 2 or more culture samples after the blank", emptyOne: "one point so far" });
+  }
+}
+$("calMode").onchange = () => { try{ localStorage.setItem("kz_serial_calmode_" + DEVICE_ID, $("calMode").value); }catch(e){}
+  renderCal(); if ($("calMode").value === "csv") drawAnalysis(); };
+$("calBlank").onchange = () => { const v = $("calBlank").value; blankRef = v === "" ? null : curated[Number(v)]; renderCurated(); };
+$("calUnit").oninput = () => { refreshCal(); saveCalState();
+  const th = $("calTbl").tHead; if (th && th.rows[0] && CAL && CAL.mode === "cal"){
+    const u = $("calUnit").value.trim() || "units"; th.rows[0].cells[4].textContent = "Standard (" + u + ")"; th.rows[0].cells[7].textContent = "Result (" + u + ")"; } };
+$("calCsv").onclick = () => {
+  if (!CAL) CAL = computeCal();
+  const u = CAL.unit, cal = CAL.mode === "cal";
+  const head = cal ? ["n", "label", "iso_time", "reading", ABS, "standard_" + u, "dilution", "in_fit", "result_" + u]
+                   : ["n", "label", "iso_time", "time_h", "reading", ABS, "dilution", ABS + "_x_dilution", "in_fit"];
+  const lines = [csvRow(head)];
+  CAL.rows.forEach(x => lines.push(csvRow(cal
+    ? [x.i + 1, x.r.label, x.r.t.toISOString(), x.r.v, x.isBlank ? "blank" : (isFinite(x.A) ? x.A.toFixed(4) : ""),
+       x.std ? x.conc : "", x.isBlank ? "" : x.dil, x.fit ? "yes" : "", x.std ? "" : (isFinite(x.pred) ? x.pred.toPrecision(5) : "")]
+    : [x.i + 1, x.r.label, x.r.t.toISOString(), x.isBlank ? "" : x.hours.toFixed(4), x.r.v, x.isBlank ? "blank" : (isFinite(x.A) ? x.A.toFixed(4) : ""),
+       x.isBlank ? "" : x.dil, isFinite(x.odc) && !x.isBlank ? x.odc.toFixed(4) : "", x.fit ? "yes" : ""])));
+  lines.push("");
+  CAL.stats.forEach(([k, v]) => lines.push(csvRow([k, v])));
+  const b = blankPoint(); if (b) lines.push(csvRow(["blank", b.label + " = " + b.v]));
+  download((cal ? "calibration-" : "growth-") + DEVICE_ID + "-" + fileStamp() + ".csv", lines.join(CRLF) + CRLF, "text/csv");
+};
+function initCal(){
+  if (!ABS){ $("calPart").hidden = true; return; }
+  let m = DEVICE.analysis || "cal";
+  try{ m = localStorage.getItem("kz_serial_calmode_" + DEVICE_ID) || m; }catch(e){}
+  $("calMode").value = m;
+  $("calUnit").value = DEVICE.concUnit || "g/L";
+  loadCalState();
+  calReady = true;
+  renderCal();
+}
+
+/* ---------------- feedback (GitHub issues, with the details filled in) ---------------- */
+function envText(){
+  const ua = navigator.userAgent;
+  const br = (ua.match(/Edg\/(\d+)/) && "Edge " + ua.match(/Edg\/(\d+)/)[1]) || (ua.match(/Chrome\/(\d+)/) && "Chrome " + ua.match(/Chrome\/(\d+)/)[1])
+    || (ua.match(/Firefox\/(\d+)/) && "Firefox " + ua.match(/Firefox\/(\d+)/)[1]) || (/Safari/.test(ua) ? "Safari" : "browser");
+  const os = android ? "Android" : /Windows/.test(ua) ? "Windows" : /Mac OS X/.test(ua) ? "macOS" : linuxOs ? "Linux" : /CrOS/.test(ua) ? "ChromeOS" : "unknown OS";
+  return br + " · " + os + (useWebUsb ? " · WebUSB" : "");
+}
+function feedbackUrl(template){
+  const u = new URL(REPO + "/issues/new");
+  u.searchParams.set("template", template);
+  u.searchParams.set("measure", DEVICE.name);
+  u.searchParams.set("version", APP_VERSION);
+  u.searchParams.set("browser", envText());
+  return u.href;
+}
+document.querySelectorAll("a[data-feedback]").forEach(a => {
+  a.href = feedbackUrl(a.dataset.feedback); a.target = "_blank"; a.rel = "noopener";
+});
 
 /* ---------------- device profile -> page ---------------- */
 $("profTag").onclick = () => showTab("Settings");
@@ -2423,7 +2833,7 @@ async function ensureCurFile(){
 let curOwnsFile = false, curWarned = false;
 const elapsedOf = t => t0 === null ? "" : ((t.getTime() - t0) / 1000).toFixed(3);
 function pointsEdited(){
-  if ($("tabTrend").classList.contains("sel")) drawChart();
+  renderCurated();                                 // a label edit can make a point the blank
   rewritePoints();
 }
 async function rewritePoints(){
@@ -2599,6 +3009,7 @@ window.addEventListener("beforeunload", () => { if (port) closePort(null); });
 applyDevice();
 listKept();
 renderCurated();
+initCal();
 updateVarUI();
 $("anaFn").onchange();
 buildQuick();

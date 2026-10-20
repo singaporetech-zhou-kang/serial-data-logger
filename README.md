@@ -7,8 +7,12 @@ A single-page browser app that reads a sensor over USB serial and logs it to a C
 ## What it does
 - **Connect** to a USB serial device from the browser.
 - **Reading:** pick the variable of interest from the incoming lines and watch its latest value.
-- **Trend:** live plot.
-- **Analysis:** load a CSV and plot it, with summary statistics, a linear fit or a moving average.
+- **Trend:** live plot. Once a blank is saved it shows absorbance / OD, with the saved points marked, and a **Steady** tag says when the reading has settled (last 8 s within 1 %).
+- **Analysis**, on the saved points:
+  - **Calibration curve** (DNS assay): standards' concentrations typed in; fits C = k × A through the origin (as Excel's `LINEST(C, A, FALSE)`), reports k and R², and gives each sample's concentration × its dilution.
+  - **Growth curve** (OD600): OD × dilution against time; growth rate μ and doubling time from ln(OD), with points that can be left out of the fit.
+  - **Download table** for the report. The blank is the point labelled "Blank", or one picked by hand.
+  - **Time series from a .csv file**: the older tools (summary statistics, linear fit, moving average on any columns).
 - **Record:** stream rows to a `.csv`. The file is written every 2 s, so an interrupted run is still saved.
 - **Settings:** the device profile, and device parameters sent as `Set, <name>, <value>`; values the device reports back are shown next to them.
 - **Console:** raw serial lines and quick commands.
@@ -46,6 +50,9 @@ The app also has a **Read me** tab for students: connecting, blank first, saving
 - Android has no file picker, so **recording happens in the browser**: rows are kept in the site's private storage, and the `.csv` downloads when you stop. A copy stays under **Settings › Recordings kept in this browser** (Download / Delete), so a crash or a closed tab loses nothing. The screen is kept on while recording.
 - Saved data points stay in the page; use Download to save them.
 - To try the Android recording path on a computer, add `?opfs` to the address.
+
+## Feedback
+Use the **Send feedback** link in the app (footer, or Read me › Feedback). It opens a GitHub issue with the app version, measurement and browser filled in. Templates: *Something went wrong* and *Suggestion*. Students without a GitHub account can tell their lab instructor or TA.
 
 ## Licence
 MIT © 2026 Singapore Institute of Technology. See [LICENSE](LICENSE).
